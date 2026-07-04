@@ -22,17 +22,20 @@ initCanvas();
 setupEventListeners();
 autoLoad();
 
+renderer.onRenderRequest(() => {
+  if (gameState) renderer.render(gameState);
+});
+
 function initCanvas() {
-  const rect = elements.gameCanvas.parentElement.getBoundingClientRect();
-  const w = Math.min(640, window.innerWidth - 300);
-  const h = Math.min(540, window.innerHeight - 160);
+  const main = document.getElementById('main');
+  const rect = main.getBoundingClientRect();
+  const w = Math.floor(rect.width - 16);
+  const h = Math.floor(rect.height - 80);
   const dpr = window.devicePixelRatio || 1;
-  elements.gameCanvas.width = Math.max(300, w) * dpr;
-  elements.gameCanvas.height = Math.max(300, h) * dpr;
-  elements.gameCanvas.style.width = Math.max(300, w) + 'px';
-  elements.gameCanvas.style.height = Math.max(300, h) + 'px';
-  const ctx = elements.gameCanvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+  elements.gameCanvas.width = Math.max(200, w) * dpr;
+  elements.gameCanvas.height = Math.max(200, h) * dpr;
+  elements.gameCanvas.style.width = Math.max(200, w) + 'px';
+  elements.gameCanvas.style.height = Math.max(200, h) + 'px';
 }
 
 function posKey(pos, shape) {
@@ -342,10 +345,6 @@ function setupEventListeners() {
     elements.winOverlay.classList.add('hidden');
   });
 
-  renderer.onSwipe((dir) => {
-    tryMove(dir);
-  });
-
   renderer.onClick((cell) => {
     if (!gameState || !level) return;
     if (!elements.solverOverlay.classList.contains('hidden')) return;
@@ -401,8 +400,18 @@ function setupEventListeners() {
     initCanvas();
     if (level) {
       renderer.setLevel(level);
-      renderer.render(gameState);
+      if (gameState) renderer.render(gameState);
     }
+  });
+
+  elements.sidebarToggle.addEventListener('click', () => {
+    elements.sidebar.classList.toggle('open');
+    elements.sidebarOverlay.classList.toggle('hidden');
+  });
+
+  elements.sidebarOverlay.addEventListener('click', () => {
+    elements.sidebar.classList.remove('open');
+    elements.sidebarOverlay.classList.add('hidden');
   });
 }
 

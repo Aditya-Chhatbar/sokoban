@@ -6,14 +6,36 @@ export class Renderer {
     this.offsetX = 0;
     this.offsetY = 0;
     this.level = null;
-    this.touchStart = null;
     this.swipeHandler = null;
-    this._setupTouch();
+    this.clickHandler = null;
     this.dpr = window.devicePixelRatio || 1;
+
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
+
+    this._lastPinchDist = null;
+    this._lastPinchCenter = null;
+    this._isPanning = false;
+    this._panStartX = 0;
+    this._panStartY = 0;
+    this._panStartPanX = 0;
+    this._panStartPanY = 0;
+    this._didPan = false;
+    this._didPinch = false;
+
+    this._setupEvents();
+  }
+
+  resetView() {
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
   }
 
   setLevel(level) {
     this.level = level;
+    this.resetView();
     this._computeLayout();
   }
 
@@ -87,9 +109,12 @@ export class Renderer {
     const { level } = this;
     if (!level) return;
 
-    const cssWidth = this.canvas.width / this.dpr;
-    const cssHeight = this.canvas.height / this.dpr;
-    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    ctx.save();
+    ctx.scale(this.dpr, this.dpr);
+    ctx.translate(this.panX, this.panY);
+    ctx.scale(this.zoom, this.zoom);
 
     const blockSet = new Set(state.blocks.map(b => this._posKey(b)));
     const playerKey = this._posKey(state.player);
@@ -107,6 +132,8 @@ export class Renderer {
         this._drawHexCell(cell, isPlayer, isBlock, isDest);
       }
     }
+
+    ctx.restore();
   }
 
   _posKey(pos) {
@@ -235,21 +262,29 @@ export class Renderer {
     }
   }
 
+  _screenToCanvas(sx, sy) {
+    return {
+      x: (sx - this.panX) / this.zoom,
+      y: (sy - this.panY) / this.zoom,
+    };
+  }
+
   pixelToCell(px, py) {
     if (!this.level) return null;
     const { shape } = this.level;
+    const { x: lx, y: ly } = this._screenToCanvas(px, py);
 
     if (shape === 'square') {
-      const cx = Math.floor((px - this.offsetX) / this.cellSize) + this.minX;
-      const cy = Math.floor((py - this.offsetY) / this.cellSize) + this.minY;
+      const cx = Math.floor((lx - this.offsetX) / this.cellSize) + this.minX;
+      const cy = Math.floor((ly - this.offsetY) / this.cellSize) + this.minY;
       const key = `${cx},${cy}`;
       if (this.level.cellSet.has(key)) return { x: cx, y: cy };
       return null;
     }
 
     const sqrt3 = Math.sqrt(3);
-    const r = (py - this.offsetY) / (this.cellSize * 1.5);
-    const q = ((px - this.offsetX) / (this.cellSize * sqrt3)) - r / 2;
+    const r = (ly - this.offsetY) / (this.cellSize * 1.5);
+    const q = ((lx - this.offsetX) / (this.cellSize * sqrt3)) - r / 2;
 
     const qr = Math.round(q);
     const rr = Math.round(r);
@@ -270,9 +305,9 @@ export class Renderer {
     return null;
   }
 
-  onClick(handler) {
-    this.clickHandler = handler;
+  _setupEvents() {
     this.canvas.addEventListener('click', (e) => {
+      if (this._didPan || this._didPinch) return;
       const rect = this.canvas.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
@@ -281,56 +316,155 @@ export class Renderer {
         this.clickHandler(cell);
       }
     });
-  }
 
-  _setupTouch() {
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = this.canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      this._zoomAt(mx, my, factor);
+    }, { passive: false });
+
+    this.canvas.addEventListener('mousedown', (e) => {
+      this._isPanning = true;
+      this._didPan = false;
+      this._panStartX = e.clientX;
+      this._panStartY = e.clientY;
+      this._panStartPanX = this.panX;
+      this._panStartPanY = this.panY;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!this._isPanning) return;
+      const dx = e.clientX - this._panStartX;
+      const dy = e.clientY - this._panStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this._didPan = true;
+      this.panX = this._panStartPanX + dx;
+      this.panY = this._panStartPanY + dy;
+      this._requestRender();
+    });
+
+    window.addEventListener('mouseup', () => {
+      this._isPanning = false;
+    });
+
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      const t = e.touches[0];
-      this.touchStart = { x: t.clientX, y: t.clientY, time: Date.now() };
+      if (e.touches.length === 2) {
+        this._didPinch = true;
+        const [t1, t2] = [e.touches[0], e.touches[1]];
+        this._lastPinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        this._lastPinchCenter = {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2,
+        };
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        this._isPanning = true;
+        this._didPan = false;
+        this._panStartX = t.clientX;
+        this._panStartY = t.clientY;
+        this._panStartPanX = this.panX;
+        this._panStartPanY = this.panY;
+        this._touchStartTime = Date.now();
+      }
+    }, { passive: false });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 2) {
+        const [t1, t2] = [e.touches[0], e.touches[1]];
+        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const center = {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2,
+        };
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = center.x - rect.left;
+        const my = center.y - rect.top;
+
+        if (this._lastPinchDist) {
+          const factor = dist / this._lastPinchDist;
+          const newZoom = Math.max(0.3, Math.min(5, this.zoom * factor));
+          const ratio = newZoom / this.zoom;
+          this.panX = mx - (mx - this.panX) * ratio;
+          this.panY = my - (my - this.panY) * ratio;
+          this.zoom = newZoom;
+        }
+
+        if (this._lastPinchCenter) {
+          this.panX += center.x - this._lastPinchCenter.x;
+          this.panY += center.y - this._lastPinchCenter.y;
+        }
+
+        this._lastPinchDist = dist;
+        this._lastPinchCenter = center;
+        this._requestRender();
+      } else if (e.touches.length === 1 && this._isPanning) {
+        const t = e.touches[0];
+        const dx = t.clientX - this._panStartX;
+        const dy = t.clientY - this._panStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this._didPan = true;
+        this.panX = this._panStartPanX + dx;
+        this.panY = this._panStartPanY + dy;
+        this._requestRender();
+      }
     }, { passive: false });
 
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
-      if (!this.touchStart || !this.swipeHandler) return;
-      const t = e.changedTouches[0];
-      const dx = t.clientX - this.touchStart.x;
-      const dy = t.clientY - this.touchStart.y;
-      const dt = Date.now() - this.touchStart.time;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist > 20 && dt < 500) {
-        const absDx = Math.abs(dx);
-        const absDy = Math.abs(dy);
-        let dir;
-
-        if (this.level && this.level.shape === 'hexagon') {
-          const angle = Math.atan2(dy, dx);
-          const snap = Math.round(angle / (Math.PI / 3)) % 6;
-          const hexDirs = [
-            { dq: 1, dr: 0 },
-            { dq: 0, dr: 1 },
-            { dq: -1, dr: 1 },
-            { dq: -1, dr: 0 },
-            { dq: 0, dr: -1 },
-            { dq: 1, dr: -1 },
-          ];
-          dir = hexDirs[(snap + 6) % 6];
-        } else {
-          if (absDx > absDy) {
-            dir = { dx: dx > 0 ? 1 : -1, dy: 0 };
-          } else {
-            dir = { dx: 0, dy: dy > 0 ? 1 : -1 };
+      if (e.touches.length < 2) {
+        this._lastPinchDist = null;
+        this._lastPinchCenter = null;
+      }
+      if (e.touches.length === 0) {
+        if (!this._didPan && !this._didPinch && this.clickHandler) {
+          const dt = Date.now() - (this._touchStartTime || 0);
+          if (dt < 300) {
+            const rect = this.canvas.getBoundingClientRect();
+            const px = this._panStartX - rect.left;
+            const py = this._panStartY - rect.top;
+            const cell = this.pixelToCell(px, py);
+            if (cell && this.clickHandler) {
+              this.clickHandler(cell);
+            }
           }
         }
-
-        this.swipeHandler(dir);
+        this._isPanning = false;
+        this._didPan = false;
+        this._didPinch = false;
       }
-      this.touchStart = null;
     }, { passive: false });
+  }
+
+  _zoomAt(mx, my, factor) {
+    const newZoom = Math.max(0.3, Math.min(5, this.zoom * factor));
+    const ratio = newZoom / this.zoom;
+    this.panX = mx - (mx - this.panX) * ratio;
+    this.panY = my - (my - this.panY) * ratio;
+    this.zoom = newZoom;
+    this._requestRender();
+  }
+
+  _renderRAF = null;
+  _requestRender() {
+    if (this._renderRAF) return;
+    this._renderRAF = requestAnimationFrame(() => {
+      this._renderRAF = null;
+      if (this._onRenderRequest) this._onRenderRequest();
+    });
+  }
+
+  onRenderRequest(handler) {
+    this._onRenderRequest = handler;
   }
 
   onSwipe(handler) {
     this.swipeHandler = handler;
+  }
+
+  onClick(handler) {
+    this.clickHandler = handler;
   }
 }

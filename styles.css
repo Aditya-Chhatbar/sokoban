@@ -8,13 +8,15 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #1a1a2e;
   color: #eee;
-  height: 100vh;
-  overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 #app {
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 #sidebar {
@@ -74,30 +76,35 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 8px;
   position: relative;
+  min-width: 0;
+  overflow: hidden;
 }
 
 #gameCanvas {
   background: #111;
   border-radius: 8px;
-  image-rendering: pixelated;
   cursor: pointer;
   touch-action: none;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 #moveCounter {
-  margin-top: 8px;
-  font-size: 1rem;
+  margin-top: 4px;
+  font-size: 0.9rem;
   color: #aaa;
+  flex-shrink: 0;
 }
 
 #controlBar {
   display: flex;
-  gap: 6px;
-  margin-top: 12px;
+  gap: 4px;
+  margin-top: 6px;
   flex-wrap: wrap;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 #controlBar button {
@@ -105,8 +112,8 @@ body {
   color: #eee;
   border: 1px solid #1a4a7a;
   border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  padding: 5px 10px;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -121,11 +128,12 @@ body {
 }
 
 #importPanel {
-  margin-top: 8px;
+  margin-top: 6px;
   display: flex;
   gap: 6px;
   width: 100%;
   max-width: 400px;
+  flex-shrink: 0;
 }
 
 #importPanel textarea {
@@ -152,8 +160,8 @@ body {
 
 .error {
   color: #e94560;
-  font-size: 0.85rem;
-  padding: 8px;
+  font-size: 0.8rem;
+  padding: 6px;
   background: rgba(233, 69, 96, 0.1);
   border-radius: 4px;
   text-align: center;
@@ -161,8 +169,8 @@ body {
 
 .info {
   color: #4FC3F7;
-  font-size: 0.85rem;
-  padding: 8px;
+  font-size: 0.8rem;
+  padding: 6px;
   background: rgba(79, 195, 247, 0.1);
   border-radius: 4px;
   text-align: center;
@@ -218,6 +226,7 @@ body {
   padding: 32px;
   text-align: center;
   min-width: 280px;
+  max-width: 90vw;
 }
 
 .overlay-content h2 {
@@ -262,13 +271,16 @@ body {
 #hintBar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 12px;
   background: #16213e;
   border: 1px solid #1a4a7a;
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 #hintBar button {
@@ -277,7 +289,7 @@ body {
   border: 1px solid #1a4a7a;
   border-radius: 4px;
   padding: 4px 10px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
@@ -299,19 +311,19 @@ body {
 
 #hintStep {
   color: #aaa;
-  min-width: 90px;
+  min-width: 80px;
 }
 
 #hintNav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 #hintDesc {
   color: #aaa;
-  min-width: 60px;
-  font-size: 0.85rem;
+  min-width: 50px;
+  font-size: 0.8rem;
 }
 
 .win-buttons {
@@ -325,12 +337,60 @@ body {
   margin-top: 0;
 }
 
+#sidebarToggle {
+  display: none;
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 1001;
+  background: #16213e;
+  color: #eee;
+  border: 1px solid #1a4a7a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+#sidebarOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
 @media (max-width: 700px) {
   #app {
     flex-direction: column;
+    position: relative;
   }
   #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 260px;
+    max-width: 80vw;
+    height: 100dvh;
+    max-height: 0;
+    overflow: hidden;
+    padding: 0;
+    z-index: 1000;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+  }
+  #sidebar.open {
+    max-height: 100dvh;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  #sidebarToggle {
+    display: block;
+  }
+  #main {
+    padding: 48px 8px 8px;
     width: 100%;
-    max-height: 40vh;
+  }
+  #controlBar button {
+    padding: 6px 8px;
+    font-size: 0.7rem;
   }
 }

@@ -44,6 +44,9 @@ export const elements = {
   paramsRect: document.getElementById('paramsRect'),
   paramsArea: document.getElementById('paramsArea'),
   paramsHex: document.getElementById('paramsHex'),
+  sidebarToggle: document.getElementById('sidebarToggle'),
+  sidebar: document.getElementById('sidebar'),
+  sidebarOverlay: document.getElementById('sidebarOverlay'),
 };
 
 function showError(msg) {
