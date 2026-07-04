@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sokoban</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <h1>Sokoban</h1>
+    <div class="config-group">
+      <label>Cell shape</label>
+      <select id="cellShape">
+        <option value="square">Square</option>
+        <option value="hexagon">Hexagon</option>
+      </select>
+    </div>
+    <div class="config-group">
+      <label>Grid type</label>
+      <select id="gridType">
+        <option value="random">Random</option>
+        <option value="rectangular">Rectangular</option>
+      </select>
+    </div>
+    <div id="paramsRect" class="config-group hidden">
+      <label>Width</label>
+      <input id="width" type="number" min="2" value="4">
+      <label>Height</label>
+      <input id="height" type="number" min="2" value="4">
+    </div>
+    <div id="paramsArea" class="config-group">
+      <label>Area (cells)</label>
+      <input id="area" type="number" min="4" value="20">
+    </div>
+    <div id="paramsHex" class="config-group hidden">
+      <label>Radius</label>
+      <input id="radius" type="number" min="1" value="3">
+    </div>
+    <div class="config-group">
+      <label>Blocks</label>
+      <input id="blocks" type="number" min="1" value="3">
+    </div>
+    <div class="config-group">
+      <label>Max attempts</label>
+      <input id="maxAttempts" type="number" min="1" value="100">
+    </div>
+    <div id="errorMsg" class="error hidden"></div>
+    <div id="statusMsg" class="info hidden"></div>
+  </div>
+  <div id="main">
+    <canvas id="gameCanvas"></canvas>
+    <div id="moveCounter">Moves: 0</div>
+    <div id="hintBar" class="hidden">
+      <span id="hintStep">Step 0 / 0</span>
+      <span id="hintNav">
+        <button id="hintPrev" disabled>Previous</button>
+        <span id="hintDesc"></span>
+        <button id="hintNext" disabled>Next</button>
+      </span>
+      <button id="hintClose">Close</button>
+    </div>
+    <div id="controlBar">
+      <button id="newLevelBtn">New Level</button>
+      <button id="restartBtn">Restart</button>
+      <button id="undoBtn" disabled>Undo</button>
+      <button id="redoBtn" disabled>Redo</button>
+      <button id="hintBtn">Hint</button>
+      <button id="guideBtn">Guide</button>
+      <button id="exportBtn">Export</button>
+      <button id="importBtn">Import</button>
+      <button id="shareBtn">Share</button>
+    </div>
+    <div id="importPanel" class="hidden">
+      <textarea id="importText" rows="3" placeholder="Paste level string..."></textarea>
+      <button id="loadBtn">Load</button>
+    </div>
+  </div>
+</div>
+
+<div id="solverOverlay" class="overlay hidden">
+  <div class="overlay-content">
+    <div class="spinner"></div>
+    <p id="solverStatus">Searching...</p>
+    <p id="solverAttempt">Attempt 1/100</p>
+    <button id="cancelBtn">Cancel</button>
+  </div>
+</div>
+
+<div id="winOverlay" class="overlay hidden">
+  <div class="overlay-content">
+    <h2>You Win!</h2>
+    <p id="winMoves">Moves: 0</p>
+    <div class="win-buttons">
+      <button id="newLevelWinBtn">New Level</button>
+      <button id="winCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="guideModal" class="overlay hidden">
+  <div class="overlay-content">
+    <h2>Controls</h2>
+    <div id="guideContent"></div>
+    <button id="guideClose">Close</button>
+  </div>
+</div>
+
+
+
+<script type="module" src="config.js"></script>
+<script type="module" src="shapeGenerator.js"></script>
+<script type="module" src="solver.js"></script>
+<script type="module" src="renderer.js"></script>
+<script type="module" src="game.js"></script>
+</body>
+</html>
