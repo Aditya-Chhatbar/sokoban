@@ -13,6 +13,7 @@ let solver = null;
 let solutionPath = null;
 let hintIndex = -1;
 let hintSavedState = null;
+let hintMoves = [];
 let currentGenConfig = null;
 let attemptCount = 0;
 
@@ -25,8 +26,13 @@ function initCanvas() {
   const rect = elements.gameCanvas.parentElement.getBoundingClientRect();
   const w = Math.min(640, window.innerWidth - 300);
   const h = Math.min(540, window.innerHeight - 160);
-  elements.gameCanvas.width = Math.max(300, w);
-  elements.gameCanvas.height = Math.max(300, h);
+  const dpr = window.devicePixelRatio || 1;
+  elements.gameCanvas.width = Math.max(300, w) * dpr;
+  elements.gameCanvas.height = Math.max(300, h) * dpr;
+  elements.gameCanvas.style.width = Math.max(300, w) + 'px';
+  elements.gameCanvas.style.height = Math.max(300, h) + 'px';
+  const ctx = elements.gameCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
 }
 
 function posKey(pos, shape) {
@@ -165,11 +171,8 @@ function showStatus(msg) {
 function updateKeyGuide() {
   const shape = elements.cellShape.value;
   if (shape === 'hexagon') {
-    elements.guideContent.innerHTML = `<div class="guide-section"><b>Pointy-top hex movement:</b></div>
-<div class="row"><span class="key">W</span><span class="arrow"> ↑ </span> up-left &nbsp; <span class="key">E</span> up-right</div>
-<div class="row"><span class="key">A</span> left &nbsp; <span class="key">D</span> right</div>
-<div class="row"><span class="key">Q</span> down-left &nbsp; <span class="key">S</span> down-right</div>
-<div class="row" style="margin-top:8px;color:#888">Arrow keys also work (↑ tries up-left then up-right; ↓ tries down-right then down-left)</div>
+    elements.guideContent.innerHTML = `<div class="guide-section"><b>Hex grid movement:</b></div>
+<div class="row" style="margin-top:6px;color:#888">Click an adjacent cell to move there</div>
 <div class="guide-section" style="margin-top:12px"><b>Goal:</b> Push all blocks onto destinations.</div>`;
   } else {
     elements.guideContent.innerHTML = `<div class="guide-section"><b>Square grid movement:</b></div>
@@ -193,7 +196,8 @@ function clearLevel() {
   elements.hintBar.classList.add('hidden');
   renderer.setLevel(null);
   const ctx = renderer.canvas.getContext('2d');
-  ctx.clearRect(0, 0, renderer.canvas.width, renderer.canvas.height);
+  const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, renderer.canvas.width / dpr, renderer.canvas.height / dpr);
   elements.moveCounter.textContent = 'Moves: 0';
   elements.undoBtn.disabled = true;
   elements.redoBtn.disabled = true;
@@ -205,6 +209,7 @@ function applyLevel(result) {
   solutionPath = null;
   hintIndex = -1;
   hintSavedState = null;
+  hintMoves = [];
   elements.hintBar.classList.add('hidden');
 
   const blocks = result.blocks.map(b => ({ ...b }));
@@ -234,34 +239,20 @@ function setupEventListeners() {
     const key = e.key;
     const dirs = [];
 
-    if (level && level.shape === 'hexagon') {
-      if (key === 'ArrowUp' || key === 'e' || key === 'E') {
-        dirs.push({ dq: 0, dr: -1 });
-      } else if (key === 'ArrowDown' || key === 'd' || key === 'D') {
-        dirs.push({ dq: 0, dr: 1 });
-      } else if (key === 'ArrowLeft' || key === 'w' || key === 'W') {
-        dirs.push({ dq: -1, dr: 0 });
-      } else if (key === 'ArrowRight' || key === 'f' || key === 'F') {
-        dirs.push({ dq: 1, dr: 0 });
-      } else if (key === 'r' || key === 'R') {
-        dirs.push({ dq: 1, dr: -1 });
-      } else if (key === 's' || key === 'S') {
-        dirs.push({ dq: -1, dr: 1 });
-      }
-    } else {
-      if (key === 'ArrowUp' || key === 'e' || key === 'E') {
-        dirs.push({ dx: 0, dy: -1 });
-      } else if (key === 'ArrowDown' || key === 'd' || key === 'D') {
-        dirs.push({ dx: 0, dy: 1 });
-      } else if (key === 'ArrowLeft' || key === 's' || key === 'S') {
-        dirs.push({ dx: -1, dy: 0 });
-      } else if (key === 'ArrowRight' || key === 'f' || key === 'F') {
-        dirs.push({ dx: 1, dy: 0 });
-      } else if (key === 'w' || key === 'W') {
-        dirs.push({ dx: 0, dy: -1 });
-      } else if (key === 'a' || key === 'A') {
-        dirs.push({ dx: -1, dy: 0 });
-      }
+    if (level && level.shape === 'hexagon') return;
+
+    if (key === 'ArrowUp' || key === 'e' || key === 'E') {
+      dirs.push({ dx: 0, dy: -1 });
+    } else if (key === 'ArrowDown' || key === 'd' || key === 'D') {
+      dirs.push({ dx: 0, dy: 1 });
+    } else if (key === 'ArrowLeft' || key === 's' || key === 'S') {
+      dirs.push({ dx: -1, dy: 0 });
+    } else if (key === 'ArrowRight' || key === 'f' || key === 'F') {
+      dirs.push({ dx: 1, dy: 0 });
+    } else if (key === 'w' || key === 'W') {
+      dirs.push({ dx: 0, dy: -1 });
+    } else if (key === 'a' || key === 'A') {
+      dirs.push({ dx: -1, dy: 0 });
     }
 
     if (dirs.length > 0) {
@@ -392,8 +383,16 @@ function setupEventListeners() {
 
     const path = computeWalkPath(player, cell, shape, blockSet, level.cellSet);
     if (path) {
+      const preBlocks = gameState.blocks.map(b => ({ ...b }));
+      const prePlayer = { ...gameState.player };
+      const preMoveCount = moveCount;
       for (const step of path) {
         if (!tryMove(step)) break;
+      }
+      const movesMade = moveCount - preMoveCount;
+      if (movesMade > 1) {
+        undoStack.length = 0;
+        undoStack.push({ blocks: preBlocks, player: prePlayer, moveCount: preMoveCount });
       }
     }
   });
@@ -414,8 +413,9 @@ function tryMove(dir) {
 
   if (!elements.hintBar.classList.contains('hidden')) {
     elements.hintBar.classList.add('hidden');
-    hintIndex = -1;
-    hintSavedState = null;
+  hintIndex = -1;
+  hintSavedState = null;
+  hintMoves = [];
   }
 
   const shape = level.shape;
@@ -442,6 +442,7 @@ function tryMove(dir) {
     undoStack.push({
       blocks: gameState.blocks.map(b => ({ ...b })),
       player: { ...gameState.player },
+      moveCount,
     });
     redoStack = [];
     moveCount++;
@@ -457,11 +458,14 @@ function tryMove(dir) {
   undoStack.push({
     blocks: gameState.blocks.map(b => ({ ...b })),
     player: { ...gameState.player },
+    moveCount,
   });
   redoStack = [];
   moveCount++;
 
   setState({ blocks: [...gameState.blocks], player: { ...target } });
+  elements.undoBtn.disabled = false;
+  elements.redoBtn.disabled = true;
   return true;
 }
 
@@ -489,6 +493,7 @@ function restart() {
   solutionPath = null;
   hintIndex = -1;
   hintSavedState = null;
+  hintMoves = [];
   elements.hintBar.classList.add('hidden');
   renderer.render(gameState);
   elements.moveCounter.textContent = 'Moves: 0';
@@ -502,8 +507,9 @@ function undo() {
   redoStack.push({
     blocks: gameState.blocks.map(b => ({ ...b })),
     player: { ...gameState.player },
+    moveCount,
   });
-  moveCount--;
+  moveCount = prev.moveCount;
   setState({
     blocks: prev.blocks.map(b => ({ ...b })),
     player: { ...prev.player },
@@ -518,8 +524,9 @@ function redo() {
   undoStack.push({
     blocks: gameState.blocks.map(b => ({ ...b })),
     player: { ...gameState.player },
+    moveCount,
   });
-  moveCount++;
+  moveCount = next.moveCount;
   setState({
     blocks: next.blocks.map(b => ({ ...b })),
     player: { ...next.player },
@@ -579,18 +586,54 @@ function showHint() {
     blocks: initialState.blocks.map(b => ({ ...b })),
     player: { ...initialState.player },
   };
+
+  const shape = level.shape;
+  hintMoves = [];
+  let simBlocks = initialState.blocks.map(b => ({ ...b }));
+  let simPlayer = { ...initialState.player };
+
+  for (const push of solutionPath) {
+    const behindBlock = shape === 'hexagon'
+      ? { q: push.blockFrom.q - push.direction.dq, r: push.blockFrom.r - push.direction.dr }
+      : { x: push.blockFrom.x - push.direction.x, y: push.blockFrom.y - push.direction.y };
+
+    const blockSet = new Set(simBlocks.map(b => posKey(b, shape)));
+    const walkPath = computeWalkPath(simPlayer, behindBlock, shape, blockSet, level.cellSet);
+
+    if (walkPath && walkPath.length > 0) {
+      hintMoves.push({ type: 'walk', direction: walkPath });
+    }
+
+    const pushBlockKey = posKey(push.blockFrom, shape);
+    const dist = shape === 'hexagon'
+      ? Math.abs(push.blockTo.q - push.blockFrom.q) + Math.abs(push.blockTo.r - push.blockFrom.r)
+      : Math.abs(push.blockTo.x - push.blockFrom.x) + Math.abs(push.blockTo.y - push.blockFrom.y);
+
+    let curBlockPos = { ...push.blockFrom };
+    for (let p = 0; p < dist; p++) {
+      const nextBlockPos = shape === 'hexagon'
+        ? { q: curBlockPos.q + push.direction.dq, r: curBlockPos.r + push.direction.dr }
+        : { x: curBlockPos.x + push.direction.dx, y: curBlockPos.y + push.direction.dy };
+      hintMoves.push({ type: 'push', direction: push.direction, blockFrom: { ...curBlockPos }, blockTo: { ...nextBlockPos } });
+      curBlockPos = nextBlockPos;
+    }
+
+    simBlocks = simBlocks.filter(b => posKey(b, shape) !== pushBlockKey).map(b => ({ ...b }));
+    simBlocks.push({ ...push.blockTo });
+    simPlayer = { ...push.blockTo };
+  }
+
   elements.hintBar.classList.remove('hidden');
   updateHintUI();
 }
 
 function updateHintUI() {
   if (!solutionPath) return;
-  const total = solutionPath.length;
-  const cumulativeCost = solutionPath.slice(0, hintIndex + 1).reduce((sum, m) => sum + (m.cost || 1), 0);
-  elements.hintStep.textContent = `Step ${hintIndex + 1} / ${total}  |  Cost: ${cumulativeCost}`;
+  const total = hintMoves.length;
+  elements.hintStep.textContent = `Step ${hintIndex + 1} / ${total}  |  Cost: ${Math.max(0, hintIndex + 1)}`;
 
   if (hintIndex >= 0 && hintIndex < total) {
-    const move = solutionPath[hintIndex];
+    const move = hintMoves[hintIndex];
     const dir = move.direction;
     let dirStr;
     if (dir.dq !== undefined) {
@@ -608,7 +651,7 @@ function updateHintUI() {
       else if (dir.dx === 0 && dir.dy === -1) dirStr = 'up';
       else dirStr = `${dir.dx},${dir.dy}`;
     }
-    elements.hintDesc.textContent = `Push ${dirStr}  (cost: ${move.cost || 1})`;
+    elements.hintDesc.textContent = move.type === 'push' ? `Push ${dirStr}` : `Move to position`;
   } else {
     elements.hintDesc.textContent = '';
   }
@@ -618,7 +661,7 @@ function updateHintUI() {
 }
 
 function applyHintStep() {
-  if (!solutionPath || hintIndex < -1 || hintIndex >= solutionPath.length) {
+  if (!solutionPath || hintIndex < -1 || hintIndex >= hintMoves.length) {
     updateHintUI();
     return;
   }
@@ -639,22 +682,46 @@ function applyHintStep() {
   let player = { ...hintSavedState.player };
 
   for (let i = 0; i <= hintIndex; i++) {
-    const move = solutionPath[i];
-    const blockFromKey = posKey(move.blockFrom, shape);
-    blocks = blocks.filter(b => posKey(b, shape) !== blockFromKey).map(b => ({ ...b }));
-    blocks.push({ ...move.blockTo });
+    const move = hintMoves[i];
 
-    player = shape === 'hexagon'
-      ? { q: move.blockTo.q - move.direction.dq, r: move.blockTo.r - move.direction.dr }
-      : { x: move.blockTo.x - move.direction.dx, y: move.blockTo.y - move.direction.dy };
+    if (move.type === 'walk') {
+      let px, py;
+      if (shape === 'hexagon') {
+        px = player.q;
+        py = player.r;
+        for (const step of move.direction) {
+          px += step[0];
+          py += step[1];
+        }
+        player = { q: px, r: py };
+      } else {
+        px = player.x;
+        py = player.y;
+        for (const step of move.direction) {
+          px += step[0];
+          py += step[1];
+        }
+        player = { x: px, y: py };
+      }
+    } else {
+      const blockFromKey = posKey(move.blockFrom, shape);
+      const curBlock = blocks.find(b => posKey(b, shape) === blockFromKey);
+      if (curBlock) {
+        blocks = blocks.filter(b => posKey(b, shape) !== blockFromKey).map(b => ({ ...b }));
+        const newBlock = shape === 'hexagon'
+          ? { q: curBlock.q + move.direction.dq, r: curBlock.r + move.direction.dr }
+          : { x: curBlock.x + move.direction.dx, y: curBlock.y + move.direction.dy };
+        blocks.push(newBlock);
+        player = { ...curBlock };
+      }
+    }
   }
 
-  moveCount = solutionPath.slice(0, hintIndex + 1).reduce((sum, m) => sum + (m.cost || 1), 0);
+  moveCount = hintIndex + 1;
   elements.moveCounter.textContent = `Moves: ${moveCount}`;
 
   setState({ blocks, player });
   updateHintUI();
-  checkWin();
 }
 
 function exportLevel() {

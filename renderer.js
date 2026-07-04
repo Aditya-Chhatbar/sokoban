@@ -9,6 +9,7 @@ export class Renderer {
     this.touchStart = null;
     this.swipeHandler = null;
     this._setupTouch();
+    this.dpr = window.devicePixelRatio || 1;
   }
 
   setLevel(level) {
@@ -21,6 +22,8 @@ export class Renderer {
 
     const { shape, cells } = this.level;
     const padding = 40;
+    const cssWidth = this.canvas.width / this.dpr;
+    const cssHeight = this.canvas.height / this.dpr;
 
     if (shape === 'square') {
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -32,14 +35,14 @@ export class Renderer {
       }
       const gridW = (maxX - minX + 1);
       const gridH = (maxY - minY + 1);
-      const availW = this.canvas.width - padding * 2;
-      const availH = this.canvas.height - padding * 2;
+      const availW = cssWidth - padding * 2;
+      const availH = cssHeight - padding * 2;
       this.cellSize = Math.floor(Math.min(availW / gridW, availH / gridH, 50));
       this.cellSize = Math.max(this.cellSize, 20);
       const totalW = gridW * this.cellSize;
       const totalH = gridH * this.cellSize;
-      this.offsetX = (this.canvas.width - totalW) / 2;
-      this.offsetY = (this.canvas.height - totalH) / 2;
+      this.offsetX = (cssWidth - totalW) / 2;
+      this.offsetY = (cssHeight - totalH) / 2;
       this.minX = minX;
       this.minY = minY;
     } else {
@@ -54,9 +57,9 @@ export class Renderer {
         if (py > maxPy) maxPy = py;
       }
       const hexW = maxPx - minPx + this.cellSize * sqrt3;
-      const hexH = maxPy - minPy + this.cellSize * 1.5;
-      const availW = this.canvas.width - padding * 2;
-      const availH = this.canvas.height - padding * 2;
+      const hexH = maxPy - minPy + this.cellSize * 2;
+      const availW = cssWidth - padding * 2;
+      const availH = cssHeight - padding * 2;
       const scaleW = availW / hexW;
       const scaleH = availH / hexH;
       const scale = Math.min(scaleW, scaleH, 1);
@@ -72,10 +75,10 @@ export class Renderer {
         if (py > tMaxPy) tMaxPy = py;
       }
       const tW = tMaxPx - tMinPx + this.cellSize * sqrt3;
-      const tH = tMaxPy - tMinPy + this.cellSize * 1.5;
-      this.offsetX = (this.canvas.width - tW) / 2 - tMinPx;
-      this.offsetY = (this.canvas.height - tH) / 2 - tMinPy;
-      this.hexSize = this.cellSize / 2;
+      const tH = tMaxPy - tMinPy + this.cellSize * 2;
+      this.offsetX = (cssWidth - tW) / 2 - tMinPx;
+      this.offsetY = (cssHeight - tH) / 2 - tMinPy;
+      this.hexSize = this.cellSize - 1 / Math.sqrt(3);
     }
   }
 
@@ -84,7 +87,9 @@ export class Renderer {
     const { level } = this;
     if (!level) return;
 
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    const cssWidth = this.canvas.width / this.dpr;
+    const cssHeight = this.canvas.height / this.dpr;
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
 
     const blockSet = new Set(state.blocks.map(b => this._posKey(b)));
     const playerKey = this._posKey(state.player);
@@ -114,11 +119,14 @@ export class Renderer {
     const s = this.cellSize;
     const x = this.offsetX + (cell.x - this.minX) * s;
     const y = this.offsetY + (cell.y - this.minY) * s;
-    const pad = 1;
+    const pad = 2;
 
     if (isBlock && isDest) {
       ctx.fillStyle = '#8B4513';
       ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
       ctx.fillStyle = '#FFD700';
       ctx.beginPath();
       ctx.arc(x + s / 2, y + s / 2, s / 4, 0, Math.PI * 2);
@@ -126,25 +134,35 @@ export class Renderer {
     } else if (isBlock) {
       ctx.fillStyle = '#8B4513';
       ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+      ctx.strokeStyle = '#6B3410';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
       ctx.fillStyle = '#A0522D';
       ctx.fillRect(x + pad + 2, y + pad + 2, s - pad * 2 - 4, s - pad * 2 - 4);
     } else if (isPlayer) {
-      ctx.fillStyle = '#444';
+      ctx.fillStyle = '#2a2a2a';
       ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
       ctx.fillStyle = '#4FC3F7';
       ctx.beginPath();
       ctx.arc(x + s / 2, y + s / 2, s / 3, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#29B6F6';
+      ctx.lineWidth = 1;
+      ctx.stroke();
     } else if (isDest) {
-      ctx.fillStyle = '#333';
+      ctx.fillStyle = '#222';
       ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
       ctx.beginPath();
       ctx.arc(x + s / 2, y + s / 2, s / 4, 0, Math.PI * 2);
       ctx.stroke();
     } else {
-      ctx.fillStyle = '#3a3a3a';
+      ctx.fillStyle = '#333';
       ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
     }
   }
@@ -170,11 +188,14 @@ export class Renderer {
       ctx.fillStyle = '#8B4513';
       ctx.fill();
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
     } else if (isBlock) {
       ctx.fillStyle = '#8B4513';
       ctx.fill();
+      ctx.strokeStyle = '#6B3410';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
       ctx.fillStyle = '#A0522D';
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
@@ -187,23 +208,29 @@ export class Renderer {
       ctx.closePath();
       ctx.fill();
     } else if (isPlayer) {
-      ctx.fillStyle = '#333';
+      ctx.fillStyle = '#2a2a2a';
       ctx.fill();
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
       ctx.fillStyle = '#4FC3F7';
       ctx.beginPath();
       ctx.arc(cx, cy, size * 0.4, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = '#29B6F6';
+      ctx.lineWidth = 1;
+      ctx.stroke();
     } else if (isDest) {
-      ctx.fillStyle = '#2a2a2a';
+      ctx.fillStyle = '#222';
       ctx.fill();
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(cx, cy, size * 0.25, 0, Math.PI * 2);
       ctx.stroke();
     } else {
-      ctx.fillStyle = '#3a3a3a';
+      ctx.fillStyle = '#333';
       ctx.fill();
     }
   }
