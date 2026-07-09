@@ -47,6 +47,9 @@ export const elements = {
   sidebarToggle: document.getElementById('sidebarToggle'),
   sidebar: document.getElementById('sidebar'),
   sidebarOverlay: document.getElementById('sidebarOverlay'),
+  zoomIn: document.getElementById('zoomIn'),
+  zoomOut: document.getElementById('zoomOut'),
+  fitView: document.getElementById('fitView'),
 };
 
 function showError(msg) {

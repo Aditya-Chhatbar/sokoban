@@ -13,11 +13,10 @@ let solver = null;
 let solutionPath = null;
 let hintIndex = -1;
 let hintSavedState = null;
-let hintMoves = [];
-let hintCumulativeMoves = [];
+let hintSteps = [];
 let hintStates = [];
 let hintCosts = [];
-let hintCost = 0;
+let hintSimulating = false;
 let currentGenConfig = null;
 let attemptCount = 0;
 
@@ -247,11 +246,9 @@ function applyLevel(result) {
   solutionPath = null;
   hintIndex = -1;
   hintSavedState = null;
-  hintMoves = [];
-  hintCumulativeMoves = [];
+  hintSteps = [];
   hintStates = [];
   hintCosts = [];
-  hintCost = 0;
   elements.hintBar.classList.add('hidden');
 
   const blocks = result.blocks.map(b => ({ ...b }));
@@ -274,6 +271,59 @@ function applyLevel(result) {
   elements.redoBtn.disabled = true;
 
   saveToStorage();
+}
+
+function handleCellClick(cell) {
+  if (!gameState || !level) return;
+  if (!elements.solverOverlay.classList.contains('hidden')) return;
+  if (!elements.winOverlay.classList.contains('hidden')) return;
+  const shape = level.shape;
+  const player = gameState.player;
+  let dir = null;
+
+  if (shape === 'hexagon') {
+    const neighbors = hexNeighbors(player.q, player.r);
+    for (const nb of neighbors) {
+      if (nb[0] === cell.q && nb[1] === cell.r) {
+        dir = { dq: nb[0] - player.q, dr: nb[1] - player.r };
+        break;
+      }
+    }
+  } else {
+    const neighbors = sqNeighbors(player.x, player.y);
+    for (const nb of neighbors) {
+      if (nb[0] === cell.x && nb[1] === cell.y) {
+        dir = { dx: nb[0] - player.x, dy: nb[1] - player.y };
+        break;
+      }
+    }
+  }
+
+  if (dir) {
+    tryMove(dir);
+    return;
+  }
+
+  const blockSet = new Set(gameState.blocks.map(b => posKey(b, shape)));
+  const cellKey = posKey(cell, shape);
+  if (blockSet.has(cellKey)) return;
+
+  const path = computeWalkPath(player, cell, shape, blockSet, level.cellSet);
+  if (path) {
+    const preBlocks = gameState.blocks.map(b => ({ ...b }));
+    const prePlayer = { ...gameState.player };
+    const preMoveCount = moveCount;
+    for (const step of path) {
+      if (!tryMove(step)) break;
+    }
+    if (!hintSimulating) {
+      const movesMade = moveCount - preMoveCount;
+      if (movesMade > 1) {
+        undoStack.splice(-movesMade, movesMade);
+        undoStack.push({ blocks: preBlocks, player: prePlayer, moveCount: preMoveCount });
+      }
+    }
+  }
 }
 
 function setupEventListeners() {
@@ -333,6 +383,10 @@ function setupEventListeners() {
 
   elements.shareBtn.addEventListener('click', share);
 
+  elements.zoomIn.addEventListener('click', () => renderer.zoomIn());
+  elements.zoomOut.addEventListener('click', () => renderer.zoomOut());
+  elements.fitView.addEventListener('click', () => renderer.fitView());
+
   elements.cancelBtn.addEventListener('click', () => {
     if (confirm('Are you sure you want to cancel the search? The puzzle might be solvable if you continue.')) {
       if (solver) {
@@ -368,7 +422,7 @@ function setupEventListeners() {
   });
 
   elements.hintNext.addEventListener('click', () => {
-    if (hintIndex < hintMoves.length - 1) {
+    if (hintIndex < hintSteps.length - 1) {
       hintIndex++;
       applyHintStep();
     }
@@ -384,56 +438,7 @@ function setupEventListeners() {
     elements.winOverlay.classList.add('hidden');
   });
 
-  renderer.onClick((cell) => {
-    if (!gameState || !level) return;
-    if (!elements.solverOverlay.classList.contains('hidden')) return;
-    if (!elements.winOverlay.classList.contains('hidden')) return;
-    const shape = level.shape;
-    const player = gameState.player;
-    let dir = null;
-
-    if (shape === 'hexagon') {
-      const neighbors = hexNeighbors(player.q, player.r);
-      for (const nb of neighbors) {
-        if (nb[0] === cell.q && nb[1] === cell.r) {
-          dir = { dq: nb[0] - player.q, dr: nb[1] - player.r };
-          break;
-        }
-      }
-    } else {
-      const neighbors = sqNeighbors(player.x, player.y);
-      for (const nb of neighbors) {
-        if (nb[0] === cell.x && nb[1] === cell.y) {
-          dir = { dx: nb[0] - player.x, dy: nb[1] - player.y };
-          break;
-        }
-      }
-    }
-
-    if (dir) {
-      tryMove(dir);
-      return;
-    }
-
-    const blockSet = new Set(gameState.blocks.map(b => posKey(b, shape)));
-    const cellKey = posKey(cell, shape);
-    if (blockSet.has(cellKey)) return;
-
-    const path = computeWalkPath(player, cell, shape, blockSet, level.cellSet);
-    if (path) {
-      const preBlocks = gameState.blocks.map(b => ({ ...b }));
-      const prePlayer = { ...gameState.player };
-      const preMoveCount = moveCount;
-      for (const step of path) {
-        if (!tryMove(step)) break;
-      }
-      const movesMade = moveCount - preMoveCount;
-      if (movesMade > 1) {
-        undoStack.splice(-movesMade, movesMade);
-        undoStack.push({ blocks: preBlocks, player: prePlayer, moveCount: preMoveCount });
-      }
-    }
-  });
+  renderer.onClick(handleCellClick);
 
   window.addEventListener('resize', () => {
     initCanvas();
@@ -459,15 +464,13 @@ function tryMove(dir) {
   if (elements.solverOverlay.classList.contains('hidden') === false) return false;
   if (elements.winOverlay.classList.contains('hidden') === false) return false;
 
-  if (!elements.hintBar.classList.contains('hidden')) {
+  if (!hintSimulating && !elements.hintBar.classList.contains('hidden')) {
     elements.hintBar.classList.add('hidden');
-  hintIndex = -1;
-  hintSavedState = null;
-  hintMoves = [];
-  hintCumulativeMoves = [];
-  hintStates = [];
-  hintCosts = [];
-  hintCost = 0;
+    hintIndex = -1;
+    hintSavedState = null;
+    hintSteps = [];
+    hintStates = [];
+    hintCosts = [];
   }
 
   const shape = level.shape;
@@ -491,33 +494,41 @@ function tryMove(dir) {
     }
     const newPlayer = { ...target };
 
+    if (!hintSimulating) {
+      undoStack.push({
+        blocks: gameState.blocks.map(b => ({ ...b })),
+        player: { ...gameState.player },
+        moveCount,
+      });
+      redoStack = [];
+    }
+    moveCount++;
+
+    setState({ blocks: newBlocks, player: newPlayer });
+    if (!hintSimulating) {
+      elements.undoBtn.disabled = false;
+      elements.redoBtn.disabled = true;
+    }
+
+    checkWin();
+    return true;
+  }
+
+  if (!hintSimulating) {
     undoStack.push({
       blocks: gameState.blocks.map(b => ({ ...b })),
       player: { ...gameState.player },
       moveCount,
     });
     redoStack = [];
-    moveCount++;
-
-    setState({ blocks: newBlocks, player: newPlayer });
-    elements.undoBtn.disabled = false;
-    elements.redoBtn.disabled = true;
-
-    checkWin();
-    return true;
   }
-
-  undoStack.push({
-    blocks: gameState.blocks.map(b => ({ ...b })),
-    player: { ...gameState.player },
-    moveCount,
-  });
-  redoStack = [];
   moveCount++;
 
   setState({ blocks: [...gameState.blocks], player: { ...target } });
-  elements.undoBtn.disabled = false;
-  elements.redoBtn.disabled = true;
+  if (!hintSimulating) {
+    elements.undoBtn.disabled = false;
+    elements.redoBtn.disabled = true;
+  }
   return true;
 }
 
@@ -545,11 +556,9 @@ function restart() {
   solutionPath = null;
   hintIndex = -1;
   hintSavedState = null;
-  hintMoves = [];
-  hintCumulativeMoves = [];
+  hintSteps = [];
   hintStates = [];
   hintCosts = [];
-  hintCost = 0;
   elements.hintBar.classList.add('hidden');
   renderer.render(gameState);
   elements.moveCounter.textContent = 'Moves: 0';
@@ -644,46 +653,27 @@ function showHint() {
   };
 
   const shape = level.shape;
-  hintMoves = [];
-  hintCumulativeMoves = [];
+  hintSteps = [];
   hintStates = [{ blocks: initialState.blocks.map(b => ({ ...b })), player: { ...initialState.player } }];
   hintCosts = [0];
-  hintCost = 0;
-  let totalMoves = 0;
   let simBlocks = initialState.blocks.map(b => ({ ...b }));
   let simPlayer = { ...initialState.player };
 
   for (const push of solutionPath) {
     const behindBlock = shape === 'hexagon'
       ? { q: push.blockFrom.q - push.direction.dq, r: push.blockFrom.r - push.direction.dr }
-      : { x: push.blockFrom.x - push.direction.x, y: push.blockFrom.y - push.direction.y };
+      : { x: push.blockFrom.x - push.direction.dx, y: push.blockFrom.y - push.direction.dy };
 
     const blockSet = new Set(simBlocks.map(b => posKey(b, shape)));
     const walkPath = computeWalkPath(simPlayer, behindBlock, shape, blockSet, level.cellSet);
 
     if (walkPath && walkPath.length > 0) {
-      hintMoves.push({ type: 'walk', direction: walkPath });
-      totalMoves += walkPath.length;
-      hintCumulativeMoves.push(totalMoves);
+      hintSteps.push({ ...behindBlock });
     }
 
-    const pushBlockKey = posKey(push.blockFrom, shape);
-    const dist = shape === 'hexagon'
-      ? Math.abs(push.blockTo.q - push.blockFrom.q) + Math.abs(push.blockTo.r - push.blockFrom.r)
-      : Math.abs(push.blockTo.x - push.blockFrom.x) + Math.abs(push.blockTo.y - push.blockFrom.y);
+    hintSteps.push({ ...push.blockFrom });
 
-    let curBlockPos = { ...push.blockFrom };
-    for (let p = 0; p < dist; p++) {
-      const nextBlockPos = shape === 'hexagon'
-        ? { q: curBlockPos.q + push.direction.dq, r: curBlockPos.r + push.direction.dr }
-        : { x: curBlockPos.x + push.direction.dx, y: curBlockPos.y + push.direction.dy };
-      hintMoves.push({ type: 'push', direction: push.direction, blockFrom: { ...curBlockPos }, blockTo: { ...nextBlockPos } });
-      curBlockPos = nextBlockPos;
-      totalMoves++;
-      hintCumulativeMoves.push(totalMoves);
-    }
-
-    simBlocks = simBlocks.filter(b => posKey(b, shape) !== pushBlockKey).map(b => ({ ...b }));
+    simBlocks = simBlocks.filter(b => posKey(b, shape) !== posKey(push.blockFrom, shape)).map(b => ({ ...b }));
     simBlocks.push({ ...push.blockTo });
     simPlayer = { ...push.blockFrom };
   }
@@ -694,7 +684,7 @@ function showHint() {
 
 function updateHintUI() {
   if (!solutionPath) return;
-  const total = hintMoves.length;
+  const total = hintSteps.length;
   elements.hintStep.textContent = `Step ${hintIndex + 1} / ${total}`;
   elements.hintDesc.textContent = '';
 
@@ -703,7 +693,7 @@ function updateHintUI() {
 }
 
 function applyHintStep() {
-  if (!solutionPath || hintIndex < -1 || hintIndex >= hintMoves.length) {
+  if (!solutionPath || hintIndex < -1 || hintIndex >= hintSteps.length) {
     updateHintUI();
     return;
   }
@@ -719,59 +709,26 @@ function applyHintStep() {
     return;
   }
 
-  if (hintIndex >= hintStates.length - 1) {
-    const prev = hintStates[hintStates.length - 1];
-    const shape = level.shape;
-    let blocks = prev.blocks.map(b => ({ ...b }));
-    let player = { ...prev.player };
-    const move = hintMoves[hintIndex];
-
-    if (move.type === 'walk') {
-      let px, py;
-      if (shape === 'hexagon') {
-        px = player.q;
-        py = player.r;
-        for (const step of move.direction) {
-          px += step.dq;
-          py += step.dr;
-        }
-        player = { q: px, r: py };
-      } else {
-        px = player.x;
-        py = player.y;
-        for (const step of move.direction) {
-          px += step.dx;
-          py += step.dy;
-        }
-        player = { x: px, y: py };
-      }
-    } else {
-      const blockFromKey = posKey(move.blockFrom, shape);
-      const curBlock = blocks.find(b => posKey(b, shape) === blockFromKey);
-      if (curBlock) {
-        blocks = blocks.filter(b => posKey(b, shape) !== blockFromKey).map(b => ({ ...b }));
-        const newBlock = shape === 'hexagon'
-          ? { q: curBlock.q + move.direction.dq, r: curBlock.r + move.direction.dr }
-          : { x: curBlock.x + move.direction.dx, y: curBlock.y + move.direction.dy };
-        blocks.push(newBlock);
-        player = { ...curBlock };
-      }
-    }
-
-    const stepCost = move.type === 'walk' ? move.direction.length : 1;
-    hintCost = hintCosts[hintCosts.length - 1] + stepCost;
-    hintCosts.push(hintCost);
-    hintStates.push({ blocks: blocks.map(b => ({ ...b })), player: { ...player } });
-    moveCount = hintCost;
-    setState({ blocks, player });
-  } else {
+  if (hintIndex < hintStates.length - 1) {
     const state = hintStates[hintIndex + 1];
     moveCount = hintCosts[hintIndex + 1];
     setState({
       blocks: state.blocks.map(b => ({ ...b })),
       player: { ...state.player },
     });
+    updateHintUI();
+    return;
   }
+
+  hintSimulating = true;
+  handleCellClick(hintSteps[hintIndex]);
+  hintSimulating = false;
+
+  hintStates.push({
+    blocks: gameState.blocks.map(b => ({ ...b })),
+    player: { ...gameState.player },
+  });
+  hintCosts.push(moveCount);
 
   updateHintUI();
 }

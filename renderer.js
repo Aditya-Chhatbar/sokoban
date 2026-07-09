@@ -14,15 +14,12 @@ export class Renderer {
     this.panX = 0;
     this.panY = 0;
 
-    this._lastPinchDist = null;
-    this._lastPinchCenter = null;
     this._isPanning = false;
     this._panStartX = 0;
     this._panStartY = 0;
     this._panStartPanX = 0;
     this._panStartPanY = 0;
     this._didPan = false;
-    this._didPinch = false;
 
     this._setupEvents();
   }
@@ -35,8 +32,27 @@ export class Renderer {
 
   setLevel(level) {
     this.level = level;
-    this.resetView();
+    this.fitView();
+  }
+
+  fitView() {
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
     this._computeLayout();
+    this._requestRender();
+  }
+
+  zoomIn() {
+    const cx = this.canvas.width / this.dpr / 2;
+    const cy = this.canvas.height / this.dpr / 2;
+    this._zoomAt(cx, cy, 1.2);
+  }
+
+  zoomOut() {
+    const cx = this.canvas.width / this.dpr / 2;
+    const cy = this.canvas.height / this.dpr / 2;
+    this._zoomAt(cx, cy, 1 / 1.2);
   }
 
   _computeLayout() {
@@ -307,7 +323,7 @@ export class Renderer {
 
   _setupEvents() {
     this.canvas.addEventListener('click', (e) => {
-      if (this._didPan || this._didPinch) return;
+      if (this._didPan) return;
       const rect = this.canvas.getBoundingClientRect();
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
@@ -347,19 +363,12 @@ export class Renderer {
 
     window.addEventListener('mouseup', () => {
       this._isPanning = false;
+      this._didPan = false;
     });
 
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      if (e.touches.length === 2) {
-        this._didPinch = true;
-        const [t1, t2] = [e.touches[0], e.touches[1]];
-        this._lastPinchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        this._lastPinchCenter = {
-          x: (t1.clientX + t2.clientX) / 2,
-          y: (t1.clientY + t2.clientY) / 2,
-        };
-      } else if (e.touches.length === 1) {
+      if (e.touches.length === 1) {
         const t = e.touches[0];
         this._isPanning = true;
         this._didPan = false;
@@ -373,35 +382,7 @@ export class Renderer {
 
     this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      if (e.touches.length === 2) {
-        const [t1, t2] = [e.touches[0], e.touches[1]];
-        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        const center = {
-          x: (t1.clientX + t2.clientX) / 2,
-          y: (t1.clientY + t2.clientY) / 2,
-        };
-        const rect = this.canvas.getBoundingClientRect();
-        const mx = center.x - rect.left;
-        const my = center.y - rect.top;
-
-        if (this._lastPinchDist) {
-          const factor = dist / this._lastPinchDist;
-          const newZoom = Math.max(0.3, Math.min(5, this.zoom * factor));
-          const ratio = newZoom / this.zoom;
-          this.panX = mx - (mx - this.panX) * ratio;
-          this.panY = my - (my - this.panY) * ratio;
-          this.zoom = newZoom;
-        }
-
-        if (this._lastPinchCenter) {
-          this.panX += center.x - this._lastPinchCenter.x;
-          this.panY += center.y - this._lastPinchCenter.y;
-        }
-
-        this._lastPinchDist = dist;
-        this._lastPinchCenter = center;
-        this._requestRender();
-      } else if (e.touches.length === 1 && this._isPanning) {
+      if (e.touches.length === 1 && this._isPanning) {
         const t = e.touches[0];
         const dx = t.clientX - this._panStartX;
         const dy = t.clientY - this._panStartY;
@@ -414,12 +395,8 @@ export class Renderer {
 
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
-      if (e.touches.length < 2) {
-        this._lastPinchDist = null;
-        this._lastPinchCenter = null;
-      }
       if (e.touches.length === 0) {
-        if (!this._didPan && !this._didPinch && this.clickHandler) {
+        if (!this._didPan && this.clickHandler) {
           const dt = Date.now() - (this._touchStartTime || 0);
           if (dt < 300) {
             const rect = this.canvas.getBoundingClientRect();
@@ -433,7 +410,6 @@ export class Renderer {
         }
         this._isPanning = false;
         this._didPan = false;
-        this._didPinch = false;
       }
     }, { passive: false });
   }

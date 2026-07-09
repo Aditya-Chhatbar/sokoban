@@ -127,6 +127,19 @@ body {
   cursor: default;
 }
 
+#zoomGroup {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+#zoomGroup button {
+  min-width: 28px;
+  text-align: center;
+  font-size: 0.85rem;
+  padding: 2px 4px;
+}
+
 #importPanel {
   margin-top: 6px;
   display: flex;
