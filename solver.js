@@ -139,49 +139,45 @@ for (const d of dirs) {
 
             if (!state.blocks.has(blockKey)) continue;
 
-            let pushPos = addPos(blockPos, d);
-            let pushKey = posKey(pushPos, shape);
-            let pushDistance = 1;
-            while (inShape(pushPos, shapeCells, shape) && !state.blocks.has(pushKey)) {
-              const newBlocks = new Set(state.blocks);
-              newBlocks.delete(blockKey);
-              newBlocks.add(pushKey);
+            const pushPos = addPos(blockPos, d);
+            const pushKey = posKey(pushPos, shape);
 
-              const playerEndKey = blockKey;
-              const newStateKey = stateKey(newBlocks, playerEndKey);
+            if (!inShape(pushPos, shapeCells, shape) || state.blocks.has(pushKey)) continue;
 
-              if (!visited.has(newStateKey)) {
+            const newBlocks = new Set(state.blocks);
+            newBlocks.delete(blockKey);
+            newBlocks.add(pushKey);
+
+            const playerEndKey = blockKey;
+            const newStateKey = stateKey(newBlocks, playerEndKey);
+
+            if (!visited.has(newStateKey)) {
                 visited.add(newStateKey);
                 if (visited.size > MAX_VISITED) {
-                  return { solved: false, exhausted: true, visited: visited.size };
+                    return { solved: false, exhausted: true, visited: visited.size };
                 }
 
-                const stepCost = walkDist + pushDistance;
+                const stepCost = walkDist + 1;
                 const newCost = state.cost + stepCost;
 
                 parent.set(newStateKey, state.key);
                 moveInfo.set(newStateKey, {
-                  blockFrom: blockPos,
-                  blockTo: pushPos,
-                  direction: d,
-                  cost: stepCost,
+                    blockFrom: blockPos,
+                    blockTo: pushPos,
+                    direction: d,
+                    cost: stepCost,
                 });
 
                 if (isWin(newBlocks, destSet)) {
-                  this.solutionPath = reconstructPath(newStateKey, parent, moveInfo, shape);
-                  this.solutionCost = newCost;
-                  return { solved: true, path: this.solutionPath, visited: visited.size, cost: this.solutionCost };
+                    this.solutionPath = reconstructPath(newStateKey, parent, moveInfo, shape);
+                    this.solutionCost = newCost;
+                    return { solved: true, path: this.solutionPath, visited: visited.size, cost: this.solutionCost };
                 }
 
                 if (hasDeadlock(newBlocks, shapeCells, destSet, shape)) continue;
 
                 dist.set(newStateKey, newCost);
                 queue.push({ blocks: newBlocks, player: playerEndKey, key: newStateKey, cost: newCost });
-              }
-
-              pushPos = addPos(pushPos, d);
-              pushKey = posKey(pushPos, shape);
-              pushDistance++;
             }
         }
       }

@@ -339,7 +339,7 @@ export class Renderer {
       if (!this._isPanning) return;
       const dx = e.clientX - this._panStartX;
       const dy = e.clientY - this._panStartY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this._didPan = true;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) this._didPan = true;
       this.panX = this._panStartPanX + dx;
       this.panY = this._panStartPanY + dy;
       this._requestRender();
@@ -405,7 +405,7 @@ export class Renderer {
         const t = e.touches[0];
         const dx = t.clientX - this._panStartX;
         const dy = t.clientY - this._panStartY;
-        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) this._didPan = true;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) this._didPan = true;
         this.panX = this._panStartPanX + dx;
         this.panY = this._panStartPanY + dy;
         this._requestRender();

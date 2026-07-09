@@ -14,6 +14,10 @@ let solutionPath = null;
 let hintIndex = -1;
 let hintSavedState = null;
 let hintMoves = [];
+let hintCumulativeMoves = [];
+let hintStates = [];
+let hintCosts = [];
+let hintCost = 0;
 let currentGenConfig = null;
 let attemptCount = 0;
 
@@ -21,6 +25,11 @@ const renderer = new Renderer(elements.gameCanvas);
 initCanvas();
 setupEventListeners();
 autoLoad();
+
+if (window.APP_VERSION) {
+  document.getElementById('versionDisplay').textContent = 'v' + window.APP_VERSION;
+  document.title = 'Sokoban v' + window.APP_VERSION;
+}
 
 renderer.onRenderRequest(() => {
   if (gameState) renderer.render(gameState);
@@ -30,12 +39,13 @@ function initCanvas() {
   const main = document.getElementById('main');
   const rect = main.getBoundingClientRect();
   const w = Math.floor(rect.width - 16);
-  const h = Math.floor(rect.height - 80);
+  const h = Math.floor(rect.height - 100);
+  const size = Math.min(w, h);
   const dpr = window.devicePixelRatio || 1;
-  elements.gameCanvas.width = Math.max(200, w) * dpr;
-  elements.gameCanvas.height = Math.max(200, h) * dpr;
-  elements.gameCanvas.style.width = Math.max(200, w) + 'px';
-  elements.gameCanvas.style.height = Math.max(200, h) + 'px';
+  elements.gameCanvas.width = Math.max(200, size) * dpr;
+  elements.gameCanvas.height = Math.max(200, size) * dpr;
+  elements.gameCanvas.style.width = Math.max(200, size) + 'px';
+  elements.gameCanvas.style.height = Math.max(200, size) + 'px';
 }
 
 function posKey(pos, shape) {
@@ -174,15 +184,40 @@ function showStatus(msg) {
 function updateKeyGuide() {
   const shape = elements.cellShape.value;
   if (shape === 'hexagon') {
-    elements.guideContent.innerHTML = `<div class="guide-section"><b>Hex grid movement:</b></div>
-<div class="row" style="margin-top:6px;color:#888">Click an adjacent cell to move there</div>
-<div class="guide-section" style="margin-top:12px"><b>Goal:</b> Push all blocks onto destinations.</div>`;
+    elements.guideContent.innerHTML = `
+<div class="guide-section"><b>How to play</b></div>
+<div class="row" style="color:#ccc">Push all brown blocks onto the golden destinations.</div>
+
+<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
+<div class="row" style="color:#ccc">Click any empty cell to walk there. The player moves automatically along a path.</div>
+<div class="row" style="color:#ccc">Click a cell next to a block to push it one space in that direction.</div>
+
+<div class="guide-section" style="margin-top:12px"><b>Buttons</b></div>
+<div class="row" style="color:#ccc"><b>Hint</b> — Shows the solution step by step</div>
+<div class="row" style="color:#ccc"><b>Undo</b> — Take back your last move</div>
+<div class="row" style="color:#ccc"><b>Restart</b> — Reset the puzzle to the beginning</div>
+
+<div class="guide-section" style="margin-top:12px"><b>Touch</b></div>
+<div class="row" style="color:#ccc">Pinch to zoom. Drag to pan the board.</div>
+`;
   } else {
-    elements.guideContent.innerHTML = `<div class="guide-section"><b>Square grid movement:</b></div>
+    elements.guideContent.innerHTML = `
+<div class="guide-section"><b>How to play</b></div>
+<div class="row" style="color:#ccc">Push all brown blocks onto the golden destinations.</div>
+
+<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
 <div class="row"><span class="key">E</span> ↑ &nbsp; <span class="key">D</span> ↓ &nbsp; <span class="key">S</span> ← &nbsp; <span class="key">F</span> →</div>
-<div class="row" style="margin-top:6px;color:#888">Arrow keys, <span class="key">W</span>↑ and <span class="key">A</span>← also work</div>
-<div class="row" style="margin-top:6px;color:#888">Click an adjacent cell to move there</div>
-<div class="guide-section" style="margin-top:12px"><b>Goal:</b> Push all blocks onto destinations.</div>`;
+<div class="row" style="color:#888">Arrow keys and <span class="key">W</span> <span class="key">A</span> also work</div>
+<div class="row" style="margin-top:6px;color:#ccc">Click any empty cell to walk there. Click next to a block to push it.</div>
+
+<div class="guide-section" style="margin-top:12px"><b>Buttons</b></div>
+<div class="row" style="color:#ccc"><b>Hint</b> — Shows the solution step by step</div>
+<div class="row" style="color:#ccc"><b>Undo</b> — Take back your last move</div>
+<div class="row" style="color:#ccc"><b>Restart</b> — Reset the puzzle to the beginning</div>
+
+<div class="guide-section" style="margin-top:12px"><b>Touch</b></div>
+<div class="row" style="color:#ccc">Pinch to zoom. Drag to pan the board.</div>
+`;
   }
 }
 
@@ -213,6 +248,10 @@ function applyLevel(result) {
   hintIndex = -1;
   hintSavedState = null;
   hintMoves = [];
+  hintCumulativeMoves = [];
+  hintStates = [];
+  hintCosts = [];
+  hintCost = 0;
   elements.hintBar.classList.add('hidden');
 
   const blocks = result.blocks.map(b => ({ ...b }));
@@ -329,7 +368,7 @@ function setupEventListeners() {
   });
 
   elements.hintNext.addEventListener('click', () => {
-    if (solutionPath && hintIndex < solutionPath.length - 1) {
+    if (hintIndex < hintMoves.length - 1) {
       hintIndex++;
       applyHintStep();
     }
@@ -390,7 +429,7 @@ function setupEventListeners() {
       }
       const movesMade = moveCount - preMoveCount;
       if (movesMade > 1) {
-        undoStack.length = 0;
+        undoStack.splice(-movesMade, movesMade);
         undoStack.push({ blocks: preBlocks, player: prePlayer, moveCount: preMoveCount });
       }
     }
@@ -425,6 +464,10 @@ function tryMove(dir) {
   hintIndex = -1;
   hintSavedState = null;
   hintMoves = [];
+  hintCumulativeMoves = [];
+  hintStates = [];
+  hintCosts = [];
+  hintCost = 0;
   }
 
   const shape = level.shape;
@@ -503,6 +546,10 @@ function restart() {
   hintIndex = -1;
   hintSavedState = null;
   hintMoves = [];
+  hintCumulativeMoves = [];
+  hintStates = [];
+  hintCosts = [];
+  hintCost = 0;
   elements.hintBar.classList.add('hidden');
   renderer.render(gameState);
   elements.moveCounter.textContent = 'Moves: 0';
@@ -598,6 +645,11 @@ function showHint() {
 
   const shape = level.shape;
   hintMoves = [];
+  hintCumulativeMoves = [];
+  hintStates = [{ blocks: initialState.blocks.map(b => ({ ...b })), player: { ...initialState.player } }];
+  hintCosts = [0];
+  hintCost = 0;
+  let totalMoves = 0;
   let simBlocks = initialState.blocks.map(b => ({ ...b }));
   let simPlayer = { ...initialState.player };
 
@@ -611,6 +663,8 @@ function showHint() {
 
     if (walkPath && walkPath.length > 0) {
       hintMoves.push({ type: 'walk', direction: walkPath });
+      totalMoves += walkPath.length;
+      hintCumulativeMoves.push(totalMoves);
     }
 
     const pushBlockKey = posKey(push.blockFrom, shape);
@@ -625,11 +679,13 @@ function showHint() {
         : { x: curBlockPos.x + push.direction.dx, y: curBlockPos.y + push.direction.dy };
       hintMoves.push({ type: 'push', direction: push.direction, blockFrom: { ...curBlockPos }, blockTo: { ...nextBlockPos } });
       curBlockPos = nextBlockPos;
+      totalMoves++;
+      hintCumulativeMoves.push(totalMoves);
     }
 
     simBlocks = simBlocks.filter(b => posKey(b, shape) !== pushBlockKey).map(b => ({ ...b }));
     simBlocks.push({ ...push.blockTo });
-    simPlayer = { ...push.blockTo };
+    simPlayer = { ...push.blockFrom };
   }
 
   elements.hintBar.classList.remove('hidden');
@@ -639,31 +695,8 @@ function showHint() {
 function updateHintUI() {
   if (!solutionPath) return;
   const total = hintMoves.length;
-  elements.hintStep.textContent = `Step ${hintIndex + 1} / ${total}  |  Cost: ${Math.max(0, hintIndex + 1)}`;
-
-  if (hintIndex >= 0 && hintIndex < total) {
-    const move = hintMoves[hintIndex];
-    const dir = move.direction;
-    let dirStr;
-    if (dir.dq !== undefined) {
-      if (dir.dq === 1 && dir.dr === 0) dirStr = 'right';
-      else if (dir.dq === -1 && dir.dr === 0) dirStr = 'left';
-      else if (dir.dq === 0 && dir.dr === 1) dirStr = 'down-right';
-      else if (dir.dq === 0 && dir.dr === -1) dirStr = 'up-left';
-      else if (dir.dq === 1 && dir.dr === -1) dirStr = 'up-right';
-      else if (dir.dq === -1 && dir.dr === 1) dirStr = 'down-left';
-      else dirStr = `${dir.dq},${dir.dr}`;
-    } else {
-      if (dir.dx === 1 && dir.dy === 0) dirStr = 'right';
-      else if (dir.dx === -1 && dir.dy === 0) dirStr = 'left';
-      else if (dir.dx === 0 && dir.dy === 1) dirStr = 'down';
-      else if (dir.dx === 0 && dir.dy === -1) dirStr = 'up';
-      else dirStr = `${dir.dx},${dir.dy}`;
-    }
-    elements.hintDesc.textContent = move.type === 'push' ? `Push ${dirStr}` : `Move to position`;
-  } else {
-    elements.hintDesc.textContent = '';
-  }
+  elements.hintStep.textContent = `Step ${hintIndex + 1} / ${total}`;
+  elements.hintDesc.textContent = '';
 
   elements.hintPrev.disabled = hintIndex < 0;
   elements.hintNext.disabled = hintIndex >= total - 1;
@@ -686,12 +719,12 @@ function applyHintStep() {
     return;
   }
 
-  const shape = level.shape;
-  let blocks = hintSavedState.blocks.map(b => ({ ...b }));
-  let player = { ...hintSavedState.player };
-
-  for (let i = 0; i <= hintIndex; i++) {
-    const move = hintMoves[i];
+  if (hintIndex >= hintStates.length - 1) {
+    const prev = hintStates[hintStates.length - 1];
+    const shape = level.shape;
+    let blocks = prev.blocks.map(b => ({ ...b }));
+    let player = { ...prev.player };
+    const move = hintMoves[hintIndex];
 
     if (move.type === 'walk') {
       let px, py;
@@ -699,16 +732,16 @@ function applyHintStep() {
         px = player.q;
         py = player.r;
         for (const step of move.direction) {
-          px += step[0];
-          py += step[1];
+          px += step.dq;
+          py += step.dr;
         }
         player = { q: px, r: py };
       } else {
         px = player.x;
         py = player.y;
         for (const step of move.direction) {
-          px += step[0];
-          py += step[1];
+          px += step.dx;
+          py += step.dy;
         }
         player = { x: px, y: py };
       }
@@ -724,12 +757,22 @@ function applyHintStep() {
         player = { ...curBlock };
       }
     }
+
+    const stepCost = move.type === 'walk' ? move.direction.length : 1;
+    hintCost = hintCosts[hintCosts.length - 1] + stepCost;
+    hintCosts.push(hintCost);
+    hintStates.push({ blocks: blocks.map(b => ({ ...b })), player: { ...player } });
+    moveCount = hintCost;
+    setState({ blocks, player });
+  } else {
+    const state = hintStates[hintIndex + 1];
+    moveCount = hintCosts[hintIndex + 1];
+    setState({
+      blocks: state.blocks.map(b => ({ ...b })),
+      player: { ...state.player },
+    });
   }
 
-  moveCount = hintIndex + 1;
-  elements.moveCounter.textContent = `Moves: ${moveCount}`;
-
-  setState({ blocks, player });
   updateHintUI();
 }
 
