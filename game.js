@@ -182,42 +182,37 @@ function showStatus(msg) {
 
 function updateKeyGuide() {
   const shape = elements.cellShape.value;
-  if (shape === 'hexagon') {
-    elements.guideContent.innerHTML = `
-<div class="guide-section"><b>How to play</b></div>
-<div class="row" style="color:#ccc">Push all brown blocks onto the golden destinations.</div>
+  const isMobile = window.innerWidth <= 700;
 
-<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
+  const goalSection = `<div class="guide-section"><b>Goal</b></div>
+<div class="row" style="color:#ccc">Push all brown blocks onto the golden destinations.</div>`;
+
+  const buttonsSection = `<div class="guide-section" style="margin-top:12px"><b>Buttons</b></div>
+<div class="row" style="color:#ccc"><b>Hint</b> — Shows the solution step by step</div>
+<div class="row" style="color:#ccc"><b>Undo</b> — Take back your last move</div>
+<div class="row" style="color:#ccc"><b>Restart</b> — Reset the puzzle to the beginning</div>`;
+
+  const zoomSection = `<div class="guide-section" style="margin-top:12px"><b>Zoom &amp; Pan</b></div>
+<div class="row" style="color:#ccc"><b>+ / -</b> buttons or scroll wheel to zoom</div>
+<div class="row" style="color:#ccc">Drag the board to pan</div>
+<div class="row" style="color:#ccc"><b>[ ]</b> to fit the puzzle to the screen</div>`;
+
+  let moveSection;
+  if (isMobile) {
+    moveSection = `<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
+<div class="row" style="color:#ccc">Tap any empty cell to walk there. The player moves automatically along a path.</div>
+<div class="row" style="color:#ccc">Tap a cell next to a block to push it one space in that direction.</div>`;
+  } else if (shape === 'hexagon') {
+    moveSection = `<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
 <div class="row" style="color:#ccc">Click any empty cell to walk there. The player moves automatically along a path.</div>
-<div class="row" style="color:#ccc">Click a cell next to a block to push it one space in that direction.</div>
-
-<div class="guide-section" style="margin-top:12px"><b>Buttons</b></div>
-<div class="row" style="color:#ccc"><b>Hint</b> — Shows the solution step by step</div>
-<div class="row" style="color:#ccc"><b>Undo</b> — Take back your last move</div>
-<div class="row" style="color:#ccc"><b>Restart</b> — Reset the puzzle to the beginning</div>
-
-<div class="guide-section" style="margin-top:12px"><b>Touch</b></div>
-<div class="row" style="color:#ccc">Pinch to zoom. Drag to pan the board.</div>
-`;
+<div class="row" style="color:#ccc">Click a cell next to a block to push it one space in that direction.</div>`;
   } else {
-    elements.guideContent.innerHTML = `
-<div class="guide-section"><b>How to play</b></div>
-<div class="row" style="color:#ccc">Push all brown blocks onto the golden destinations.</div>
-
-<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
-<div class="row"><span class="key">E</span> ↑ &nbsp; <span class="key">D</span> ↓ &nbsp; <span class="key">S</span> ← &nbsp; <span class="key">F</span> →</div>
-<div class="row" style="color:#888">Arrow keys and <span class="key">W</span> <span class="key">A</span> also work</div>
-<div class="row" style="margin-top:6px;color:#ccc">Click any empty cell to walk there. Click next to a block to push it.</div>
-
-<div class="guide-section" style="margin-top:12px"><b>Buttons</b></div>
-<div class="row" style="color:#ccc"><b>Hint</b> — Shows the solution step by step</div>
-<div class="row" style="color:#ccc"><b>Undo</b> — Take back your last move</div>
-<div class="row" style="color:#ccc"><b>Restart</b> — Reset the puzzle to the beginning</div>
-
-<div class="guide-section" style="margin-top:12px"><b>Touch</b></div>
-<div class="row" style="color:#ccc">Pinch to zoom. Drag to pan the board.</div>
-`;
+    moveSection = `<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
+<div class="row"><span class="key">↑</span> <span class="key">↓</span> <span class="key">←</span> <span class="key">→</span> arrow keys</div>
+<div class="row" style="margin-top:6px;color:#ccc">Click any empty cell to walk there. Click next to a block to push it.</div>`;
   }
+
+  elements.guideContent.innerHTML = goalSection + moveSection + buttonsSection + zoomSection;
 }
 
 function clearLevel() {
@@ -333,18 +328,14 @@ function setupEventListeners() {
 
     if (level && level.shape === 'hexagon') return;
 
-    if (key === 'ArrowUp' || key === 'e' || key === 'E') {
+    if (key === 'ArrowUp') {
       dirs.push({ dx: 0, dy: -1 });
-    } else if (key === 'ArrowDown' || key === 'd' || key === 'D') {
+    } else if (key === 'ArrowDown') {
       dirs.push({ dx: 0, dy: 1 });
-    } else if (key === 'ArrowLeft' || key === 's' || key === 'S') {
+    } else if (key === 'ArrowLeft') {
       dirs.push({ dx: -1, dy: 0 });
-    } else if (key === 'ArrowRight' || key === 'f' || key === 'F') {
+    } else if (key === 'ArrowRight') {
       dirs.push({ dx: 1, dy: 0 });
-    } else if (key === 'w' || key === 'W') {
-      dirs.push({ dx: 0, dy: -1 });
-    } else if (key === 'a' || key === 'A') {
-      dirs.push({ dx: -1, dy: 0 });
     }
 
     if (dirs.length > 0) {
@@ -406,12 +397,6 @@ function setupEventListeners() {
 
   elements.hintClose.addEventListener('click', () => {
     elements.hintBar.classList.add('hidden');
-    if (hintSavedState) {
-      setState({
-        blocks: hintSavedState.blocks.map(b => ({ ...b })),
-        player: { ...hintSavedState.player },
-      });
-    }
   });
 
   elements.hintPrev.addEventListener('click', () => {

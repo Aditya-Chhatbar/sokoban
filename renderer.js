@@ -57,11 +57,22 @@ export class Renderer {
 
   _computeLayout() {
     if (!this.level) return;
+    this.cellSize = 40;
 
     const { shape, cells } = this.level;
     const padding = 40;
-    const cssWidth = this.canvas.width / this.dpr;
-    const cssHeight = this.canvas.height / this.dpr;
+    const main = this.canvas.parentElement;
+    const rect = main.getBoundingClientRect();
+    const w = Math.floor(rect.width - 16);
+    const h = Math.floor(rect.height - 100);
+    const size = Math.max(200, Math.min(w, h));
+    this.canvas.width = size * this.dpr;
+    this.canvas.height = size * this.dpr;
+    this.canvas.style.width = size + 'px';
+    this.canvas.style.height = size + 'px';
+
+    const cssWidth = size;
+    const cssHeight = size;
 
     if (shape === 'square') {
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -185,9 +196,15 @@ export class Renderer {
     } else if (isPlayer) {
       ctx.fillStyle = '#2a2a2a';
       ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
-      ctx.strokeStyle = '#1a1a1a';
-      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = isDest ? '#FFD700' : '#1a1a1a';
+      ctx.lineWidth = isDest ? 1.5 : 0.5;
       ctx.strokeRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+      if (isDest) {
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.arc(x + s / 2, y + s / 2, s / 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.fillStyle = '#4FC3F7';
       ctx.beginPath();
       ctx.arc(x + s / 2, y + s / 2, s / 3, 0, Math.PI * 2);
@@ -253,9 +270,16 @@ export class Renderer {
     } else if (isPlayer) {
       ctx.fillStyle = '#2a2a2a';
       ctx.fill();
-      ctx.strokeStyle = '#1a1a1a';
-      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = isDest ? '#FFD700' : '#1a1a1a';
+      ctx.lineWidth = isDest ? 1.5 : 0.5;
       ctx.stroke();
+      if (isDest) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.25, 0, Math.PI * 2);
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
       ctx.fillStyle = '#4FC3F7';
       ctx.beginPath();
       ctx.arc(cx, cy, size * 0.4, 0, Math.PI * 2);

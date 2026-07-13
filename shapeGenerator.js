@@ -178,7 +178,7 @@ export function generateLevel(config) {
   const destKeys = shuffle(allKeys).slice(0, numBlocks);
   const destSet = new Set(destKeys);
 
-  const availableBlocks = shuffle(Array.from(nonCorners)).filter(k => !destSet.has(k));
+  const availableBlocks = shuffle(Array.from(nonCorners));
   const blockKeys = availableBlocks.slice(0, numBlocks);
   const blockSet = new Set(blockKeys);
 

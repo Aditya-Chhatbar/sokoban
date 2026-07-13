@@ -240,6 +240,8 @@ body {
   text-align: center;
   min-width: 280px;
   max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .overlay-content h2 {
