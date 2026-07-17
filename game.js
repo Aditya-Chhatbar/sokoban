@@ -113,7 +113,7 @@ async function generateAndVerify(config) {
       elements.solverOverlay.classList.add('hidden');
       applyLevel(result);
       solutionPath = solveResult.path;
-      showStatus(`Found solvable puzzle on attempt ${successfulAttempts}/${maxAttempts} (cost: ${solveResult.cost})`);
+      showStatus(`Found solvable puzzle on attempt ${successfulAttempts}/${maxAttempts} (cost: ${solveResult.cost}, decisions: ${solveResult.decisions})`);
       return;
     }
   }
@@ -175,9 +175,8 @@ function computeWalkPath(from, to, shape, blockSet, cellSet) {
 }
 
 function showStatus(msg) {
-  elements.statusMsg.textContent = msg;
-  elements.statusMsg.classList.remove('hidden');
-  setTimeout(() => elements.statusMsg.classList.add('hidden'), 4000);
+  elements.notificationText.textContent = msg;
+  elements.notificationBar.classList.remove('hidden');
 }
 
 function updateKeyGuide() {
@@ -226,6 +225,7 @@ function clearLevel() {
   hintIndex = -1;
   hintSavedState = null;
   elements.hintBar.classList.add('hidden');
+  elements.notificationBar.classList.add('hidden');
   renderer.setLevel(null);
   const ctx = renderer.canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -389,6 +389,10 @@ function setupEventListeners() {
   elements.guideBtn.addEventListener('click', () => {
     updateKeyGuide();
     elements.guideModal.classList.remove('hidden');
+  });
+
+  elements.notificationClose.addEventListener('click', () => {
+    elements.notificationBar.classList.add('hidden');
   });
 
   elements.guideClose.addEventListener('click', () => {

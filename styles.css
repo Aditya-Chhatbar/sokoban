@@ -189,6 +189,47 @@ body {
   text-align: center;
 }
 
+#notificationBar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  color: #4FC3F7;
+  font-size: 0.85rem;
+  background: rgba(22, 33, 62, 0.95);
+  border: 1px solid rgba(79, 195, 247, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  max-width: calc(100vw - 24px);
+  white-space: nowrap;
+}
+
+#notificationText {
+  flex: 1;
+  text-align: left;
+}
+
+#notificationClose {
+  background: transparent;
+  color: #4FC3F7;
+  border: 1px solid rgba(79, 195, 247, 0.3);
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+#notificationClose:hover {
+  background: rgba(79, 195, 247, 0.2);
+}
+
 #guideContent {
   font-size: 0.9rem;
   color: #ccc;

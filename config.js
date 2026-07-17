@@ -9,7 +9,9 @@ export const elements = {
   maxAttempts: document.getElementById('maxAttempts'),
 
   errorMsg: document.getElementById('errorMsg'),
-  statusMsg: document.getElementById('statusMsg'),
+  notificationBar: document.getElementById('notificationBar'),
+  notificationText: document.getElementById('notificationText'),
+  notificationClose: document.getElementById('notificationClose'),
   guideBtn: document.getElementById('guideBtn'),
   guideModal: document.getElementById('guideModal'),
   guideContent: document.getElementById('guideContent'),

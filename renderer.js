@@ -133,10 +133,10 @@ export class Renderer {
 
   render(state) {
     const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
     const { level } = this;
     if (!level) return;
-
-    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     ctx.save();
     ctx.scale(this.dpr, this.dpr);

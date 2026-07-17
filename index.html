@@ -50,7 +50,6 @@
       <input id="maxAttempts" type="number" min="1" value="100">
     </div>
     <div id="errorMsg" class="error hidden"></div>
-    <div id="statusMsg" class="info hidden"></div>
   </div>
   <div id="main">
     <canvas id="gameCanvas"></canvas>
@@ -94,6 +93,11 @@
     <p id="solverAttempt">Attempt 1/100</p>
     <button id="cancelBtn">Cancel</button>
   </div>
+</div>
+
+<div id="notificationBar" class="hidden">
+  <span id="notificationText"></span>
+  <button id="notificationClose">Close</button>
 </div>
 
 <div id="winOverlay" class="overlay hidden">

@@ -99,7 +99,6 @@ export class Solver {
     const dist = new Map();
     dist.set(startKey, 0);
     const queue = [{ blocks: initialBlocks, player: initialPlayer, key: startKey, cost: 0 }];
-    const visited = new Set([startKey]);
     const parent = new Map();
     const moveInfo = new Map();
 
@@ -112,13 +111,19 @@ export class Solver {
 
       if (idx % CHUNK === 0) {
         if (onProgress) {
-          onProgress({ visited: visited.size, queueSize: queue.length });
+          onProgress({ visited: dist.size, queueSize: queue.length });
         }
         await new Promise(r => setTimeout(r, 0));
         if (this.cancelled) break;
       }
 
       if (state.cost > dist.get(state.key)) continue;
+
+      if (isWin(state.blocks, destSet)) {
+        this.solutionPath = reconstructPath(state.key, parent, moveInfo, shape);
+        this.solutionCost = state.cost;
+        return { solved: true, path: this.solutionPath, visited: dist.size, cost: this.solutionCost, decisions: countDecisions(this.solutionPath, shape) };
+      }
 
       const reachable = reachableDistances(
         parseKey(state.key, shape).player,
@@ -151,43 +156,37 @@ for (const d of dirs) {
             const playerEndKey = blockKey;
             const newStateKey = stateKey(newBlocks, playerEndKey);
 
-            if (!visited.has(newStateKey)) {
-                visited.add(newStateKey);
-                if (visited.size > MAX_VISITED) {
-                    return { solved: false, exhausted: true, visited: visited.size };
-                }
+            const stepCost = walkDist + 1;
+            const newCost = state.cost + stepCost;
 
-                const stepCost = walkDist + 1;
-                const newCost = state.cost + stepCost;
+            if (dist.has(newStateKey) && dist.get(newStateKey) <= newCost) continue;
 
-                parent.set(newStateKey, state.key);
-                moveInfo.set(newStateKey, {
-                    blockFrom: blockPos,
-                    blockTo: pushPos,
-                    direction: d,
-                    cost: stepCost,
-                });
+            if (hasDeadlock(newBlocks, shapeCells, destSet, shape)) continue;
 
-                if (isWin(newBlocks, destSet)) {
-                    this.solutionPath = reconstructPath(newStateKey, parent, moveInfo, shape);
-                    this.solutionCost = newCost;
-                    return { solved: true, path: this.solutionPath, visited: visited.size, cost: this.solutionCost };
-                }
+            dist.set(newStateKey, newCost);
 
-                if (hasDeadlock(newBlocks, shapeCells, destSet, shape)) continue;
-
-                dist.set(newStateKey, newCost);
-                queue.push({ blocks: newBlocks, player: playerEndKey, key: newStateKey, cost: newCost });
+            if (dist.size > MAX_VISITED) {
+                return { solved: false, exhausted: true, visited: dist.size };
             }
+
+            parent.set(newStateKey, state.key);
+            moveInfo.set(newStateKey, {
+                blockFrom: blockPos,
+                blockTo: pushPos,
+                direction: d,
+                cost: stepCost,
+            });
+
+            queue.push({ blocks: newBlocks, player: playerEndKey, key: newStateKey, cost: newCost });
         }
       }
     }
 
     if (this.cancelled) {
-      return { solved: false, cancelled: true, visited: visited.size };
+      return { solved: false, cancelled: true, visited: dist.size };
     }
 
-    return { solved: false, exhausted: true, visited: visited.size };
+    return { solved: false, exhausted: true, visited: dist.size };
   }
 }
 
@@ -236,6 +235,24 @@ function isWin(blocks, dests) {
     if (!dests.has(b)) return false;
   }
   return true;
+}
+
+function countDecisions(path, shape) {
+  if (path.length === 0) return 0;
+  let d = 1;
+  for (let i = 1; i < path.length; i++) {
+    const prev = path[i - 1];
+    const cur = path[i];
+    const behind = shape === 'hexagon'
+      ? { q: cur.blockFrom.q - cur.direction.dq, r: cur.blockFrom.r - cur.direction.dr }
+      : { x: cur.blockFrom.x - cur.direction.dx, y: cur.blockFrom.y - cur.direction.dy };
+    const playerPos = prev.blockFrom;
+    const walked = shape === 'hexagon'
+      ? behind.q !== playerPos.q || behind.r !== playerPos.r
+      : behind.x !== playerPos.x || behind.y !== playerPos.y;
+    if (walked) d++;
+  }
+  return d;
 }
 
 function reconstructPath(endKey, parent, moveInfo, shape) {
