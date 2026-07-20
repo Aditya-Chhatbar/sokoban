@@ -178,8 +178,11 @@ export function generateLevel(config) {
   const destKeys = shuffle(allKeys).slice(0, numBlocks);
   const destSet = new Set(destKeys);
 
-  const availableBlocks = shuffle(Array.from(nonCorners));
-  const blockKeys = availableBlocks.slice(0, numBlocks);
+  const blockCandidates = shuffle(Array.from(nonCorners).filter(k => !destSet.has(k)));
+  if (blockCandidates.length < numBlocks) {
+    return null;
+  }
+  const blockKeys = blockCandidates.slice(0, numBlocks);
   const blockSet = new Set(blockKeys);
 
   const remaining = shuffle(allKeys).filter(k => !blockSet.has(k) && !destSet.has(k));

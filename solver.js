@@ -1,5 +1,32 @@
+// ---------------------------------------------------------------------------
+// Constants & direction tables
+// ---------------------------------------------------------------------------
+
 const CHUNK = 2000;
-const MAX_VISITED = 500000;
+
+const SQ_DIRS = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+const HEX_DIRS = [{ q: 1, r: 0 }, { q: -1, r: 0 }, { q: 0, r: 1 }, { q: 0, r: -1 }, { q: 1, r: -1 }, { q: -1, r: 1 }];
+
+function getDirs(shape) { return shape === 'hexagon' ? HEX_DIRS : SQ_DIRS; }
+
+// ---------------------------------------------------------------------------
+// Coordinate helpers
+// ---------------------------------------------------------------------------
+
+function posKey(pos, shape) {
+  return shape === 'hexagon' ? `${pos.q},${pos.r}` : `${pos.x},${pos.y}`;
+}
+
+function addPos(a, b) {
+  if (a.x !== undefined) return { x: a.x + b.x, y: a.y + b.y };
+  return { q: a.q + b.q, r: a.r + b.r };
+}
+
+function inShape(pos, shapeCells, shape) { return shapeCells.has(posKey(pos, shape)); }
+
+// ---------------------------------------------------------------------------
+// State serialization (used only inside Solver.run)
+// ---------------------------------------------------------------------------
 
 function stateKey(blocks, player) {
   const sorted = Array.from(blocks).sort().join('#');
@@ -18,44 +45,15 @@ function parseKey(key, shape) {
   return { blocks: positions, player };
 }
 
-function posKey(pos, shape) {
-  if (shape === 'hexagon') {
-    return `${pos.q},${pos.r}`;
-  }
-  return `${pos.x},${pos.y}`;
-}
-
-function addPos(a, b) {
-  if (a.x !== undefined) {
-    return { x: a.x + b.x, y: a.y + b.y };
-  }
-  return { q: a.q + b.q, r: a.r + b.r };
-}
-
-function eqPos(a, b) {
-  if (a.x !== undefined) {
-    return a.x === b.x && a.y === b.y;
-  }
-  return a.q === b.q && a.r === b.r;
-}
-
-const SQ_DIRS = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
-const HEX_DIRS = [{ q: 1, r: 0 }, { q: -1, r: 0 }, { q: 0, r: 1 }, { q: 0, r: -1 }, { q: 1, r: -1 }, { q: -1, r: 1 }];
-
-function getDirs(shape) {
-  return shape === 'hexagon' ? HEX_DIRS : SQ_DIRS;
-}
-
-function inShape(pos, shapeCells, shape) {
-  return shapeCells.has(posKey(pos, shape));
-}
+// ---------------------------------------------------------------------------
+// BFS: reachable cells for the player (used by Solver.run)
+// ---------------------------------------------------------------------------
 
 function reachableDistances(playerPos, blockSet, shapeCells, shape) {
   const dirs = getDirs(shape);
   const dist = new Map();
-  const key = posKey(playerPos, shape);
+  dist.set(posKey(playerPos, shape), 0);
   const queue = [playerPos];
-  dist.set(key, 0);
 
   while (queue.length > 0) {
     const cur = queue.shift();
@@ -69,126 +67,47 @@ function reachableDistances(playerPos, blockSet, shapeCells, shape) {
       }
     }
   }
-
   return dist;
 }
 
-export class Solver {
-  constructor(level) {
-    this.level = level;
-    this.cancelled = false;
-    this.solutionPath = null;
-    this.solutionCost = 0;
-  }
+// ---------------------------------------------------------------------------
+// A* heuristic: push-distance from every cell to nearest goal (used by Solver.run)
+// ---------------------------------------------------------------------------
 
-  cancel() {
-    this.cancelled = true;
-  }
+function precomputeHeuristicDist(shapeCells, dests, shape) {
+  const dirs = getDirs(shape);
+  const dist = new Map();
+  const queue = [];
 
-  async run(onProgress) {
-    const { cells, neighborsFn, keyFn } = this.level;
-    const shape = this.level.shape;
-    const dirs = getDirs(shape);
-    const shapeCells = this.level.cellSet;
+  for (const d of dests) { dist.set(d, 0); queue.push(d); }
 
-    const initialBlocks = new Set(this.level.blocks.map(b => posKey(b, shape)));
-    const initialPlayer = posKey(this.level.player, shape);
-    const destSet = new Set(this.level.destinations.map(d => posKey(d, shape)));
+  while (queue.length > 0) {
+    const curKey = queue.shift();
+    const curDist = dist.get(curKey);
+    const parts = curKey.split(',').map(Number);
+    const curPos = shape === 'hexagon' ? { q: parts[0], r: parts[1] } : { x: parts[0], y: parts[1] };
 
-    const startKey = stateKey(initialBlocks, initialPlayer);
-    const dist = new Map();
-    dist.set(startKey, 0);
-    const queue = [{ blocks: initialBlocks, player: initialPlayer, key: startKey, cost: 0 }];
-    const parent = new Map();
-    const moveInfo = new Map();
-
-    let idx = 0;
-
-    while (queue.length > 0 && !this.cancelled) {
-      queue.sort((a, b) => a.cost - b.cost);
-      const state = queue.shift();
-      idx++;
-
-      if (idx % CHUNK === 0) {
-        if (onProgress) {
-          onProgress({ visited: dist.size, queueSize: queue.length });
-        }
-        await new Promise(r => setTimeout(r, 0));
-        if (this.cancelled) break;
-      }
-
-      if (state.cost > dist.get(state.key)) continue;
-
-      if (isWin(state.blocks, destSet)) {
-        this.solutionPath = reconstructPath(state.key, parent, moveInfo, shape);
-        this.solutionCost = state.cost;
-        return { solved: true, path: this.solutionPath, visited: dist.size, cost: this.solutionCost, decisions: countDecisions(this.solutionPath, shape) };
-      }
-
-      const reachable = reachableDistances(
-        parseKey(state.key, shape).player,
-        state.blocks,
-        shapeCells,
-        shape
-      );
-
-      for (const [playerReachableKey, walkDist] of reachable) {
-        const parts = playerReachableKey.split(',').map(Number);
-        const playerReachablePos = shape === 'hexagon'
-          ? { q: parts[0], r: parts[1] }
-          : { x: parts[0], y: parts[1] };
-
-for (const d of dirs) {
-            const blockPos = addPos(playerReachablePos, d);
-            const blockKey = posKey(blockPos, shape);
-
-            if (!state.blocks.has(blockKey)) continue;
-
-            const pushPos = addPos(blockPos, d);
-            const pushKey = posKey(pushPos, shape);
-
-            if (!inShape(pushPos, shapeCells, shape) || state.blocks.has(pushKey)) continue;
-
-            const newBlocks = new Set(state.blocks);
-            newBlocks.delete(blockKey);
-            newBlocks.add(pushKey);
-
-            const playerEndKey = blockKey;
-            const newStateKey = stateKey(newBlocks, playerEndKey);
-
-            const stepCost = walkDist + 1;
-            const newCost = state.cost + stepCost;
-
-            if (dist.has(newStateKey) && dist.get(newStateKey) <= newCost) continue;
-
-            if (hasDeadlock(newBlocks, shapeCells, destSet, shape)) continue;
-
-            dist.set(newStateKey, newCost);
-
-            if (dist.size > MAX_VISITED) {
-                return { solved: false, exhausted: true, visited: dist.size };
-            }
-
-            parent.set(newStateKey, state.key);
-            moveInfo.set(newStateKey, {
-                blockFrom: blockPos,
-                blockTo: pushPos,
-                direction: d,
-                cost: stepCost,
-            });
-
-            queue.push({ blocks: newBlocks, player: playerEndKey, key: newStateKey, cost: newCost });
-        }
+    for (const d of dirs) {
+      const next = addPos(curPos, d);
+      const nk = posKey(next, shape);
+      if (shapeCells.has(nk) && !dist.has(nk)) {
+        dist.set(nk, curDist + 1);
+        queue.push(nk);
       }
     }
-
-    if (this.cancelled) {
-      return { solved: false, cancelled: true, visited: dist.size };
-    }
-
-    return { solved: false, exhausted: true, visited: dist.size };
   }
+  return dist;
 }
+
+function stateHeuristic(blocks, heuristicDist) {
+  let h = 0;
+  for (const bk of blocks) h += heuristicDist.get(bk) || 0;
+  return h;
+}
+
+// ---------------------------------------------------------------------------
+// Deadlock / win detection (used by Solver.run)
+// ---------------------------------------------------------------------------
 
 function hasDeadlock(blocks, shapeCells, dests, shape) {
   for (const bk of blocks) {
@@ -196,32 +115,14 @@ function hasDeadlock(blocks, shapeCells, dests, shape) {
     const parts = bk.split(',').map(Number);
     let canPush = false;
 
-    if (shape === 'square') {
-      const x = parts[0], y = parts[1];
-      const checks = [
-        [-1, 0], [1, 0], [0, -1], [0, 1]
-      ];
-      for (const [dx, dy] of checks) {
-        const behind = `${x-dx},${y-dy}`;
-        const ahead = `${x+dx},${y+dy}`;
-        if (shapeCells.has(behind) && shapeCells.has(ahead)) {
-          canPush = true;
-          break;
-        }
-      }
-    } else {
-      const q = parts[0], r = parts[1];
-      const checks = [
-        [-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, -1]
-      ];
-      for (const [dq, dr] of checks) {
-        const behind = `${q-dq},${r-dr}`;
-        const ahead = `${q+dq},${r+dr}`;
-        if (shapeCells.has(behind) && shapeCells.has(ahead)) {
-          canPush = true;
-          break;
-        }
-      }
+    const checks = shape === 'square'
+      ? [[-1, 0], [1, 0], [0, -1], [0, 1]]
+      : [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, -1]];
+
+    for (const [da, db] of checks) {
+      const keyA = shape === 'square' ? `${parts[0]-da},${parts[1]-db}` : `${parts[0]-da},${parts[1]-db}`;
+      const keyB = shape === 'square' ? `${parts[0]+da},${parts[1]+db}` : `${parts[0]+da},${parts[1]+db}`;
+      if (shapeCells.has(keyA) && shapeCells.has(keyB)) { canPush = true; break; }
     }
 
     if (!canPush) return true;
@@ -231,29 +132,13 @@ function hasDeadlock(blocks, shapeCells, dests, shape) {
 
 function isWin(blocks, dests) {
   if (blocks.size !== dests.size) return false;
-  for (const b of blocks) {
-    if (!dests.has(b)) return false;
-  }
+  for (const b of blocks) if (!dests.has(b)) return false;
   return true;
 }
 
-function countDecisions(path, shape) {
-  if (path.length === 0) return 0;
-  let d = 1;
-  for (let i = 1; i < path.length; i++) {
-    const prev = path[i - 1];
-    const cur = path[i];
-    const behind = shape === 'hexagon'
-      ? { q: cur.blockFrom.q - cur.direction.dq, r: cur.blockFrom.r - cur.direction.dr }
-      : { x: cur.blockFrom.x - cur.direction.dx, y: cur.blockFrom.y - cur.direction.dy };
-    const playerPos = prev.blockFrom;
-    const walked = shape === 'hexagon'
-      ? behind.q !== playerPos.q || behind.r !== playerPos.r
-      : behind.x !== playerPos.x || behind.y !== playerPos.y;
-    if (walked) d++;
-  }
-  return d;
-}
+// ---------------------------------------------------------------------------
+// Path reconstruction (used by Solver.run)
+// ---------------------------------------------------------------------------
 
 function reconstructPath(endKey, parent, moveInfo, shape) {
   const path = [];
@@ -276,29 +161,101 @@ function reconstructPath(endKey, parent, moveInfo, shape) {
     path.unshift({ blockFrom, blockTo, direction, cost: info.cost });
     current = parent.get(current);
   }
-
   return path;
 }
 
-export function applyMove(state, move, shape) {
-  const blocks = new Set(state.blocks.map(b => posKey(b, shape)));
-  const playerKey = posKey(state.player, shape);
+// ---------------------------------------------------------------------------
+// Solver — public API (used by game.js)
+// ---------------------------------------------------------------------------
 
-  const blockFromKey = posKey(move.blockFrom, shape);
-  const blockToKey = posKey(move.blockTo, shape);
+export class Solver {
+  constructor(level) {
+    this.level = level;
+    this.cancelled = false;
+    this.solutionPath = null;
+    this.solutionCost = 0;
+  }
 
-  blocks.delete(blockFromKey);
-  blocks.add(blockToKey);
+  cancel() { this.cancelled = true; }
 
-  const newPlayerPos = shape === 'hexagon'
-    ? { q: move.blockFrom.q - move.direction.dq, r: move.blockFrom.r - move.direction.dr }
-    : { x: move.blockFrom.x - move.direction.x, y: move.blockFrom.y - move.direction.y };
+  async run(onProgress) {
+    const shape = this.level.shape;
+    const dirs = getDirs(shape);
+    const shapeCells = this.level.cellSet;
 
-  return {
-    blocks: Array.from(blocks).map(k => {
-      const p = k.split(',').map(Number);
-      return shape === 'hexagon' ? { q: p[0], r: p[1] } : { x: p[0], y: p[1] };
-    }),
-    player: newPlayerPos,
-  };
+    const initialBlocks = new Set(this.level.blocks.map(b => posKey(b, shape)));
+    const initialPlayer = posKey(this.level.player, shape);
+    const destSet = new Set(this.level.destinations.map(d => posKey(d, shape)));
+
+    const heuristicDist = precomputeHeuristicDist(shapeCells, destSet, shape);
+    const startKey = stateKey(initialBlocks, initialPlayer);
+    const dist = new Map();
+    dist.set(startKey, 0);
+
+    const queue = [{ blocks: initialBlocks, player: initialPlayer, key: startKey, cost: 0, f: stateHeuristic(initialBlocks, heuristicDist) }];
+    const parent = new Map();
+    const moveInfo = new Map();
+
+    let idx = 0;
+
+    while (queue.length > 0 && !this.cancelled) {
+      queue.sort((a, b) => a.f - b.f);
+      const state = queue.shift();
+      idx++;
+
+      if (idx % CHUNK === 0) {
+        onProgress?.({ visited: dist.size, queueSize: queue.length });
+        await new Promise(r => setTimeout(r, 0));
+        if (this.cancelled) break;
+      }
+
+      if (state.cost > dist.get(state.key)) continue;
+
+      if (isWin(state.blocks, destSet)) {
+        this.solutionPath = reconstructPath(state.key, parent, moveInfo, shape);
+        this.solutionCost = state.cost;
+        return { solved: true, path: this.solutionPath, visited: dist.size, cost: this.solutionCost };
+      }
+
+      const reachable = reachableDistances(parseKey(state.key, shape).player, state.blocks, shapeCells, shape);
+
+      for (const [playerReachableKey] of reachable) {
+        const parts = playerReachableKey.split(',').map(Number);
+        const playerReachablePos = shape === 'hexagon'
+          ? { q: parts[0], r: parts[1] }
+          : { x: parts[0], y: parts[1] };
+
+        for (const d of dirs) {
+          const blockPos = addPos(playerReachablePos, d);
+          const blockKey = posKey(blockPos, shape);
+
+          if (!state.blocks.has(blockKey)) continue;
+
+          const pushPos = addPos(blockPos, d);
+          const pushKey = posKey(pushPos, shape);
+
+          if (!inShape(pushPos, shapeCells, shape) || state.blocks.has(pushKey)) continue;
+
+          const newBlocks = new Set(state.blocks);
+          newBlocks.delete(blockKey);
+          newBlocks.add(pushKey);
+
+          const newStateKey = stateKey(newBlocks, blockKey);
+          const newCost = state.cost + 1;
+
+          if (dist.has(newStateKey) && dist.get(newStateKey) <= newCost) continue;
+          if (hasDeadlock(newBlocks, shapeCells, destSet, shape)) continue;
+
+          dist.set(newStateKey, newCost);
+          parent.set(newStateKey, state.key);
+
+          const h = stateHeuristic(newBlocks, heuristicDist);
+          moveInfo.set(newStateKey, { blockFrom: blockPos, blockTo: pushPos, direction: d, cost: 1 });
+          queue.push({ blocks: newBlocks, player: blockKey, key: newStateKey, cost: newCost, f: newCost + h });
+        }
+      }
+    }
+
+    return { solved: false, cancelled: this.cancelled, exhausted: !this.cancelled, visited: dist.size };
+  }
 }
