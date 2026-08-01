@@ -66,6 +66,24 @@ body {
   border-color: #e94560;
 }
 
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #e94560;
+  cursor: pointer;
+}
+
 .hidden {
   display: none !important;
 }
@@ -379,6 +397,28 @@ body {
   color: #aaa;
   min-width: 50px;
   font-size: 0.8rem;
+}
+
+.confirm-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.confirm-buttons button {
+  margin-top: 0;
+  min-width: 80px;
+}
+
+#confirmNo {
+  background: #0f3460;
+  border: 1px solid #1a4a7a;
+  color: #eee;
+}
+
+#confirmNo:hover {
+  background: #1a4a7a;
 }
 
 .win-buttons {

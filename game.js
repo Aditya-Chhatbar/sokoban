@@ -1,5 +1,5 @@
 import { elements, readConfig, clearError, saveConfig, loadConfig } from './config.js';
-import { generateLevel, sqNeighbors, hexNeighbors } from './shapeGenerator.js';
+import { generateLevel, parseLevelString, formatLevel, sqNeighbors, hexNeighbors } from './shapeGenerator.js';
 import { Solver } from './solver.js';
 import { Renderer } from './renderer.js';
 
@@ -23,8 +23,7 @@ let hintSteps = [];
 let hintStates = [];
 let hintCosts = [];
 let hintSimulating = false;
-let currentGenConfig = null;
-let attemptCount = 0;
+let confirmResolve = null;
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -90,6 +89,22 @@ function setState(newState) {
   elements.moveCounter.textContent = `Moves: ${moveCount}`;
 }
 
+function showConfirm(msg) {
+  return new Promise(resolve => {
+    confirmResolve = resolve;
+    elements.confirmText.textContent = msg;
+    elements.confirmModal.classList.remove('hidden');
+  });
+}
+
+function saveToStorage() {
+  if (!level || !initialState) return;
+  try {
+    const encoded = formatLevel(level, initialState);
+    localStorage.setItem('sokoban_level', encoded);
+  } catch (e) { /* ignore */ }
+}
+
 function clearLevel() {
   level = null;
   gameState = null;
@@ -98,6 +113,8 @@ function clearLevel() {
   redoStack = [];
   moveCount = 0;
   solutionPath = null;
+  lastSolveCost = null;
+  lastSolveVisited = null;
   hintIndex = -1;
   hintSavedState = null;
   elements.hintBar.classList.add('hidden');
@@ -113,7 +130,6 @@ function clearLevel() {
 
 function applyLevel(result) {
   level = result;
-  attemptCount = 0;
   solutionPath = null;
   hintIndex = -1;
   hintSavedState = null;
@@ -136,8 +152,8 @@ function applyLevel(result) {
   elements.moveCounter.textContent = 'Moves: 0';
   elements.undoBtn.disabled = true;
   elements.redoBtn.disabled = true;
-
   saveToStorage();
+  checkWin();
 }
 
 // ---------------------------------------------------------------------------
@@ -194,9 +210,18 @@ function updateKeyGuide() {
 
 async function generateAndVerify(config) {
   clearError();
-  clearLevel();
-  currentGenConfig = config;
   saveConfig();
+
+  if (!config.ensureSolvable) {
+    for (let i = 0; i < config.maxAttempts; i++) {
+      const result = generateLevel(config);
+      if (result) { clearLevel(); applyLevel(result); return; }
+    }
+    elements.errorMsg.textContent = 'Failed to generate puzzle. Try different settings.';
+    elements.errorMsg.classList.remove('hidden');
+
+    return;
+  }
 
   elements.solverOverlay.classList.remove('hidden');
   elements.cancelBtn.disabled = false;
@@ -219,6 +244,7 @@ async function generateAndVerify(config) {
 
     if (solveResult.solved) {
       elements.solverOverlay.classList.add('hidden');
+      clearLevel();
       applyLevel(result);
       solutionPath = solveResult.path;
       lastSolveCost = solveResult.cost;
@@ -231,6 +257,7 @@ async function generateAndVerify(config) {
   elements.solverOverlay.classList.add('hidden');
   elements.errorMsg.textContent = `Could not generate a solvable puzzle in ${config.maxAttempts} attempts.`;
   elements.errorMsg.classList.remove('hidden');
+
 }
 
 // ---------------------------------------------------------------------------
@@ -355,13 +382,7 @@ function tryMove(dir) {
     return true;
   }
 
-  if (!hintSimulating) {
-    undoStack.push({ blocks: gameState.blocks.map(b => ({ ...b })), player: { ...gameState.player }, moveCount });
-    redoStack = [];
-  }
-
   setState({ blocks: [...gameState.blocks], player: { ...target } });
-  if (!hintSimulating) { elements.undoBtn.disabled = false; elements.redoBtn.disabled = true; }
   return true;
 }
 
@@ -375,8 +396,10 @@ function checkWin() {
   const destSet = new Set(level.destinations.map(d => posKey(d, shape)));
   const blockSet = new Set(gameState.blocks.map(b => posKey(b, shape)));
   if (destSet.size === blockSet.size && [...destSet].every(k => blockSet.has(k))) {
+    if (hintSimulating) return;
     elements.winMoves.textContent = `Moves: ${moveCount}`;
     elements.winOverlay.classList.remove('hidden');
+
   }
 }
 
@@ -439,8 +462,8 @@ async function startSolve() {
     lastSolveVisited = result.visited;
     showHint();
   } else {
-    elements.errorMsg.textContent = 'This puzzle appears to be unsolvable.';
-    elements.errorMsg.classList.remove('hidden');
+
+    showStatus('This puzzle appears to be unsolvable — hints are not available.');
   }
 }
 
@@ -519,17 +542,16 @@ function applyHintStep() {
 }
 
 // ---------------------------------------------------------------------------
-// Export / Import (used by exportBtn, importBtn, loadBtn, autoLoad)
+// Export / Import (used by exportBtn, importBtn, loadBtn)
 // ---------------------------------------------------------------------------
 
-function exportLevel() {
+async function exportLevel() {
   if (!level || !gameState) return;
 
-  const shape = level.shape;
-  const data = { shape, cells: level.cells, destinations: level.destinations, blocks: gameState.blocks, player: gameState.player };
+  const state = moveCount > 0 && !await showConfirm('Copy current state? Click No to copy the initial puzzle instead.') ? initialState : gameState;
 
   try {
-    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    const encoded = formatLevel(level, state);
     navigator.clipboard.writeText(encoded).catch(() => {});
     elements.errorMsg.textContent = 'Level copied to clipboard!';
     elements.errorMsg.classList.remove('hidden');
@@ -542,12 +564,20 @@ function exportLevel() {
 
 async function importLevel(str) {
   try {
-    const data = JSON.parse(decodeURIComponent(escape(atob(str))));
-    if (!data.shape || !data.cells || !data.destinations || !data.blocks || !data.player) throw new Error('Invalid format');
+    let data = parseLevelString(str);
 
-    const cellSet = new Set(data.cells.map(c => posKey(c, data.shape)));
-    level = { shape: data.shape, cells: data.cells, cellSet, destinations: data.destinations, blocks: data.blocks, player: data.player, neighborsFn: null, keyFn: null };
+    // Backward compatibility: old base64-encoded JSON format
+    if (!data) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(str.trim()))));
+        if (decoded.shape && decoded.cells && decoded.destinations && decoded.blocks && decoded.player) {
+          return await importLevel(formatLevel(decoded, decoded));
+        }
+      } catch (_) { /* not old format */ }
+      throw new Error('Invalid format');
+    }
 
+    level = data;
     gameState = { blocks: data.blocks.map(b => ({ ...b })), player: { ...data.player } };
     initialState = { blocks: data.blocks.map(b => ({ ...b })), player: { ...data.player } };
     undoStack = []; redoStack = []; moveCount = 0;
@@ -561,6 +591,7 @@ async function importLevel(str) {
     elements.importText.value = '';
 
     saveToStorage();
+    checkWin();
 
     elements.solverOverlay.classList.remove('hidden');
     elements.cancelBtn.disabled = false;
@@ -574,6 +605,7 @@ async function importLevel(str) {
       solutionPath = result.path; lastSolveCost = result.cost; lastSolveVisited = result.visited;
       showStatus(`Pushes: ${lastSolveCost}, States explored: ${lastSolveVisited}`);
     } else {
+  
       showStatus('This puzzle appears to be unsolvable.');
     }
   } catch (e) {
@@ -583,27 +615,13 @@ async function importLevel(str) {
 }
 
 // ---------------------------------------------------------------------------
-// LocalStorage persistence (used by applyLevel, importLevel)
-// ---------------------------------------------------------------------------
-
-function saveToStorage() {
-  if (!level || !initialState) return;
-  try {
-    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify({
-      shape: level.shape, cells: level.cells, destinations: level.destinations,
-      blocks: initialState.blocks, player: initialState.player,
-    }))));
-    localStorage.setItem('sokoban_level', encoded);
-  } catch (e) { /* ignore */ }
-}
-
-// ---------------------------------------------------------------------------
 // Event wiring (run once at boot)
 // ---------------------------------------------------------------------------
 
 function setupEventListeners() {
   document.addEventListener('keydown', e => {
     if (level && level.shape === 'hexagon') return;
+    if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') return;
     const dirMap = { ArrowUp: { dx: 0, dy: -1 }, ArrowDown: { dx: 0, dy: 1 }, ArrowLeft: { dx: -1, dy: 0 }, ArrowRight: { dx: 1, dy: 0 } };
     const dir = dirMap[e.key];
     if (!dir) return;
@@ -612,7 +630,12 @@ function setupEventListeners() {
     tryMove(dir);
   });
 
-  elements.newLevelBtn.addEventListener('click', async () => { const c = readConfig(); if (c) await generateAndVerify(c); });
+  elements.newLevelBtn.addEventListener('click', async () => {
+    const c = readConfig();
+    if (!c) return;
+    if (c.askBeforeNewLevel && !await showConfirm('Do you want to leave this level?')) return;
+    await generateAndVerify(c);
+  });
   elements.restartBtn.addEventListener('click', restart);
   elements.undoBtn.addEventListener('click', undo);
   elements.redoBtn.addEventListener('click', redo);
@@ -624,8 +647,8 @@ function setupEventListeners() {
   elements.zoomOut.addEventListener('click', () => renderer.zoomOut());
   elements.fitView.addEventListener('click', () => renderer.fitView());
 
-  elements.cancelBtn.addEventListener('click', () => {
-    if (confirm('Are you sure you want to cancel the search? The puzzle might be solvable if you continue.')) solver?.cancel();
+  elements.cancelBtn.addEventListener('click', async () => {
+    if (await showConfirm('Are you sure you want to cancel the search? The puzzle might be solvable if you continue.')) solver?.cancel();
   });
 
   elements.guideBtn.addEventListener('click', () => { updateKeyGuide(); elements.guideModal.classList.remove('hidden'); });
@@ -646,10 +669,14 @@ function setupEventListeners() {
       solutionPath = result.path; lastSolveCost = result.cost; lastSolveVisited = result.visited;
       showStatus(`Pushes: ${lastSolveCost}, States explored: ${lastSolveVisited}`);
     } else {
+  
       showStatus('This puzzle appears to be unsolvable.');
     }
   });
 
+  elements.confirmYes.addEventListener('click', () => { elements.confirmModal.classList.add('hidden'); if (confirmResolve) { confirmResolve(true); confirmResolve = null; } });
+  elements.confirmNo.addEventListener('click', () => { elements.confirmModal.classList.add('hidden'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } });
+  elements.confirmModal.addEventListener('click', e => { if (e.target === elements.confirmModal) { elements.confirmModal.classList.add('hidden'); if (confirmResolve) { confirmResolve(false); confirmResolve = null; } } });
   elements.notificationClose.addEventListener('click', () => elements.notificationBar.classList.add('hidden'));
   elements.guideClose.addEventListener('click', () => elements.guideModal.classList.add('hidden'));
   elements.hintClose.addEventListener('click', () => elements.hintBar.classList.add('hidden'));
@@ -680,14 +707,11 @@ function setupEventListeners() {
 
 async function autoLoad() {
   loadConfig();
-
-  const hash = window.location.hash;
-  if (hash.startsWith('#level=')) { await importLevel(hash.substring(7)); return; }
-
   const stored = localStorage.getItem('sokoban_level');
-  if (stored) { await importLevel(stored); return; }
-
-  const config = readConfig() || { shape: 'square', type: 'rectangular', numBlocks: 3, maxAttempts: 100, dimensions: { width: 8, height: 8, area: 64 } };
-  currentGenConfig = config;
+  if (stored) {
+    await importLevel(stored);
+    return;
+  }
+  const config = readConfig() || { shape: 'square', type: 'rectangular', numBlocks: 3, maxAttempts: 100, dimensions: { width: 8, height: 8, area: 64 }, ensureSolvable: true };
   await generateAndVerify(config);
 }

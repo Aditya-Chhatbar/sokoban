@@ -7,6 +7,8 @@ export const elements = {
   radius: document.getElementById('radius'),
   blocks: document.getElementById('blocks'),
   maxAttempts: document.getElementById('maxAttempts'),
+  ensureSolvable: document.getElementById('ensureSolvable'),
+  askBeforeNewLevel: document.getElementById('askBeforeNewLevel'),
 
   errorMsg: document.getElementById('errorMsg'),
   notificationBar: document.getElementById('notificationBar'),
@@ -52,6 +54,11 @@ export const elements = {
   zoomIn: document.getElementById('zoomIn'),
   zoomOut: document.getElementById('zoomOut'),
   fitView: document.getElementById('fitView'),
+
+  confirmModal: document.getElementById('confirmModal'),
+  confirmText: document.getElementById('confirmText'),
+  confirmYes: document.getElementById('confirmYes'),
+  confirmNo: document.getElementById('confirmNo'),
 };
 
 function showError(msg) {
@@ -69,6 +76,8 @@ export function saveConfig() {
     radius: elements.radius.value,
     blocks: elements.blocks.value,
     maxAttempts: elements.maxAttempts.value,
+    ensureSolvable: elements.ensureSolvable.checked,
+    askBeforeNewLevel: elements.askBeforeNewLevel.checked,
   };
   try {
     localStorage.setItem('sokoban_config', JSON.stringify(data));
@@ -90,6 +99,8 @@ export function loadConfig() {
     if (data.radius) elements.radius.value = data.radius;
     if (data.blocks) elements.blocks.value = data.blocks;
     if (data.maxAttempts) elements.maxAttempts.value = data.maxAttempts;
+    if (data.ensureSolvable !== undefined) elements.ensureSolvable.checked = data.ensureSolvable;
+    if (data.askBeforeNewLevel !== undefined) elements.askBeforeNewLevel.checked = data.askBeforeNewLevel;
     return true;
   } catch (e) { return false; }
 }
@@ -193,7 +204,7 @@ export function readConfig() {
     return null;
   }
 
-  return { shape, type, numBlocks, maxAttempts, dimensions };
+  return { shape, type, numBlocks, maxAttempts, dimensions, ensureSolvable: elements.ensureSolvable.checked, askBeforeNewLevel: elements.askBeforeNewLevel.checked };
 }
 
 elements.cellShape.addEventListener('change', () => {
@@ -209,5 +220,8 @@ elements.gridType.addEventListener('change', () => {
 ['width', 'height', 'area', 'radius', 'blocks', 'maxAttempts'].forEach(id => {
   elements[id].addEventListener('change', saveConfig);
 });
+
+elements.ensureSolvable.addEventListener('change', saveConfig);
+elements.askBeforeNewLevel.addEventListener('change', saveConfig);
 
 populateGridTypes();

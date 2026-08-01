@@ -6,7 +6,6 @@ export class Renderer {
     this.offsetX = 0;
     this.offsetY = 0;
     this.level = null;
-    this.swipeHandler = null;
     this.clickHandler = null;
     this.dpr = window.devicePixelRatio || 1;
 
@@ -22,12 +21,6 @@ export class Renderer {
     this._didPan = false;
 
     this._setupEvents();
-  }
-
-  resetView() {
-    this.zoom = 1;
-    this.panX = 0;
-    this.panY = 0;
   }
 
   setLevel(level) {
@@ -458,10 +451,6 @@ export class Renderer {
 
   onRenderRequest(handler) {
     this._onRenderRequest = handler;
-  }
-
-  onSwipe(handler) {
-    this.swipeHandler = handler;
   }
 
   onClick(handler) {

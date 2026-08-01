@@ -97,7 +97,7 @@ function removeDeadEnds(cells, neighborsFn, keyFn) {
   return result;
 }
 
-function detectCorners(cells, shape, neighborsFn, keyFn, threshold) {
+function detectCorners(cells, neighborsFn, keyFn, threshold) {
   const corners = new Set();
   for (const key of cells) {
     const parts = key.split(',').map(Number);
@@ -113,10 +113,6 @@ function detectCorners(cells, shape, neighborsFn, keyFn, threshold) {
     }
   }
   return corners;
-}
-
-function pickRandom(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function shuffle(arr) {
@@ -161,7 +157,7 @@ export function generateLevel(config) {
     return null;
   }
 
-  const corners = detectCorners(cleanCells, cleanCells, neighborsFn, keyFn, threshold);
+  const corners = detectCorners(cleanCells, neighborsFn, keyFn, threshold);
   const nonCorners = new Set();
   for (const key of cleanCells) {
     if (!corners.has(key)) {
@@ -185,7 +181,7 @@ export function generateLevel(config) {
   const blockKeys = blockCandidates.slice(0, numBlocks);
   const blockSet = new Set(blockKeys);
 
-  const remaining = shuffle(allKeys).filter(k => !blockSet.has(k) && !destSet.has(k));
+  const remaining = shuffle(allKeys).filter(k => !blockSet.has(k));
   if (remaining.length === 0) {
     return null;
   }
@@ -199,22 +195,107 @@ export function generateLevel(config) {
     shape,
     cells: Array.from(cleanCells).map(parseCoord),
     cellSet: cleanCells,
-    corners,
     destinations: destKeys.map(parseCoord),
     blocks: blockKeys.map(parseCoord),
     player: parseCoord(playerKey),
-    parseCoord,
-    neighborsFn,
-    keyFn,
   };
 }
 
-export function parseCoord(shape, key) {
-  const parts = key.split(',').map(Number);
-  if (shape === 'square') {
-    return { x: parts[0], y: parts[1] };
+// ---------------------------------------------------------------------------
+// Level string format: human-readable ASCII level editor format
+//   First char: s = square, h = hexagon
+//   Tiles: n=wall, e=empty, b=box, E=goal, B=box on goal, p=player, P=player on goal
+//   ,  = row separator (hex rows auto-offset by half cell)
+//   Whitespace is ignored
+// ---------------------------------------------------------------------------
+
+export function parseLevelString(str) {
+  const clean = str.replace(/\s+/g, '');
+  if (clean.length < 2) return null;
+
+  const shape = clean[0] === 'h' ? 'hexagon' : 'square';
+  const rows = clean.substring(1).split(',');
+
+  const cells = [];
+  const destinations = [];
+  const blocks = [];
+  let player = null;
+
+  for (let row = 0; row < rows.length; row++) {
+    const cs = rows[row];
+    for (let col = 0; col < cs.length; col++) {
+      const ch = cs[col];
+      if (ch === 'n') continue;
+
+      const pos = shape === 'hexagon' ? { q: col, r: row } : { x: col, y: row };
+
+      cells.push(pos);
+      if (ch === 'E' || ch === 'B' || ch === 'P') destinations.push({ ...pos });
+      if (ch === 'b' || ch === 'B') blocks.push({ ...pos });
+      if (ch === 'p' || ch === 'P') player = { ...pos };
+    }
   }
-  return { q: parts[0], r: parts[1] };
+
+  if (!player) return null;
+
+  const keyFn = shape === 'hexagon' ? hexKey : sqKey;
+  const cellSet = new Set(cells.map(c => keyFn(c.x ?? c.q, c.y ?? c.r)));
+
+  return { shape, cells, cellSet, destinations, blocks, player };
+}
+
+export function formatLevel(level, gameState) {
+  const shape = level.shape;
+  const keyFn = shape === 'hexagon' ? hexKey : sqKey;
+  const destSet = new Set(level.destinations.map(d => keyFn(d.x ?? d.q, d.y ?? d.r)));
+
+  const blockSet = gameState
+    ? new Set(gameState.blocks.map(b => keyFn(b.x ?? b.q, b.y ?? b.r)))
+    : new Set();
+
+  const playerKey = gameState
+    ? keyFn(gameState.player.x ?? gameState.player.q, gameState.player.y ?? gameState.player.r)
+    : null;
+
+  let minCol = Infinity, minRow = Infinity, maxCol = -Infinity, maxRow = -Infinity;
+  const grid = new Map();
+
+  for (const cell of level.cells) {
+    const col = shape === 'hexagon' ? cell.q : cell.x;
+    const row = shape === 'hexagon' ? cell.r : cell.y;
+    minCol = Math.min(minCol, col);
+    minRow = Math.min(minRow, row);
+    maxCol = Math.max(maxCol, col);
+    maxRow = Math.max(maxRow, row);
+  }
+
+  for (const cell of level.cells) {
+    const col = (shape === 'hexagon' ? cell.q : cell.x) - minCol;
+    const row = (shape === 'hexagon' ? cell.r : cell.y) - minRow;
+    const origCol = shape === 'hexagon' ? cell.q : cell.x;
+    const origRow = shape === 'hexagon' ? cell.r : cell.y;
+    const ck = keyFn(origCol, origRow);
+    const k = `${col},${row}`;
+
+    let ch;
+    if (ck === playerKey) ch = destSet.has(ck) ? 'P' : 'p';
+    else if (blockSet.has(ck)) ch = destSet.has(ck) ? 'B' : 'b';
+    else if (destSet.has(ck)) ch = 'E';
+    else ch = 'e';
+    grid.set(k, ch);
+  }
+
+  const rows = [];
+  for (let row = 0; row <= maxRow - minRow; row++) {
+    let line = '';
+    for (let col = 0; col <= maxCol - minCol; col++) {
+      line += grid.get(`${col},${row}`) || 'n';
+    }
+    line = line.replace(/n+$/, '');
+    if (line.length > 0) rows.push(line);
+  }
+
+  return (shape === 'hexagon' ? 'h' : 's') + rows.join(',');
 }
 
 export { sqKey, hexKey, sqNeighbors, hexNeighbors };

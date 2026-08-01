@@ -49,6 +49,18 @@
       <label>Max attempts</label>
       <input id="maxAttempts" type="number" min="1" value="100">
     </div>
+    <div class="config-group checkbox-group">
+      <label>
+        <input id="ensureSolvable" type="checkbox" checked>
+        Ensure solvability
+      </label>
+    </div>
+    <div class="config-group checkbox-group">
+      <label>
+        <input id="askBeforeNewLevel" type="checkbox" checked>
+        Ask before new level
+      </label>
+    </div>
     <div id="errorMsg" class="error hidden"></div>
   </div>
   <div id="main">
@@ -80,7 +92,7 @@
       </span>
     </div>
     <div id="importPanel" class="hidden">
-      <textarea id="importText" rows="3" placeholder="Paste level string..."></textarea>
+      <textarea id="importText" rows="3" placeholder="Paste level code here..."></textarea>
       <button id="loadBtn">Load</button>
     </div>
   </div>
@@ -107,6 +119,16 @@
     <div class="win-buttons">
       <button id="newLevelWinBtn">New Level</button>
       <button id="winCloseBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmModal" class="overlay hidden">
+  <div class="overlay-content">
+    <p id="confirmText"></p>
+    <div class="confirm-buttons">
+      <button id="confirmYes">Yes</button>
+      <button id="confirmNo">No</button>
     </div>
   </div>
 </div>

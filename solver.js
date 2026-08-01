@@ -120,8 +120,8 @@ function hasDeadlock(blocks, shapeCells, dests, shape) {
       : [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, -1]];
 
     for (const [da, db] of checks) {
-      const keyA = shape === 'square' ? `${parts[0]-da},${parts[1]-db}` : `${parts[0]-da},${parts[1]-db}`;
-      const keyB = shape === 'square' ? `${parts[0]+da},${parts[1]+db}` : `${parts[0]+da},${parts[1]+db}`;
+      const keyA = `${parts[0]-da},${parts[1]-db}`;
+      const keyB = `${parts[0]+da},${parts[1]+db}`;
       if (shapeCells.has(keyA) && shapeCells.has(keyB)) { canPush = true; break; }
     }
 
@@ -172,8 +172,6 @@ export class Solver {
   constructor(level) {
     this.level = level;
     this.cancelled = false;
-    this.solutionPath = null;
-    this.solutionCost = 0;
   }
 
   cancel() { this.cancelled = true; }
@@ -212,9 +210,8 @@ export class Solver {
       if (state.cost > dist.get(state.key)) continue;
 
       if (isWin(state.blocks, destSet)) {
-        this.solutionPath = reconstructPath(state.key, parent, moveInfo, shape);
-        this.solutionCost = state.cost;
-        return { solved: true, path: this.solutionPath, visited: dist.size, cost: this.solutionCost };
+        const path = reconstructPath(state.key, parent, moveInfo, shape);
+        return { solved: true, path, visited: dist.size, cost: state.cost };
       }
 
       const reachable = reachableDistances(parseKey(state.key, shape).player, state.blocks, shapeCells, shape);
