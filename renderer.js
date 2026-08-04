@@ -385,20 +385,39 @@ export class Renderer {
 
     this.canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      this._didPan = false;
+      this._touchStartTime = Date.now();
+      if (e.touches.length === 2) {
+        this._pinchStartDist = this._touchDist(e.touches);
+        this._pinchStartZoom = this.zoom;
+        this._isPanning = false;
+        return;
+      }
       if (e.touches.length === 1) {
         const t = e.touches[0];
         this._isPanning = true;
-        this._didPan = false;
         this._panStartX = t.clientX;
         this._panStartY = t.clientY;
         this._panStartPanX = this.panX;
         this._panStartPanY = this.panY;
-        this._touchStartTime = Date.now();
       }
     }, { passive: false });
 
     this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
+      if (e.touches.length === 2 && this._pinchStartDist) {
+        this._didPan = true;
+        const factor = this._touchDist(e.touches) / this._pinchStartDist;
+        const newZoom = Math.max(0.3, Math.min(5, this._pinchStartZoom * factor));
+        const cx = this.canvas.width / this.dpr / 2;
+        const cy = this.canvas.height / this.dpr / 2;
+        const ratio = newZoom / this.zoom;
+        this.panX = cx - (cx - this.panX) * ratio;
+        this.panY = cy - (cy - this.panY) * ratio;
+        this.zoom = newZoom;
+        this._requestRender();
+        return;
+      }
       if (e.touches.length === 1 && this._isPanning) {
         const t = e.touches[0];
         const dx = t.clientX - this._panStartX;
@@ -412,6 +431,7 @@ export class Renderer {
 
     this.canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
+      this._pinchStartDist = null;
       if (e.touches.length === 0) {
         if (!this._didPan && this.clickHandler) {
           const dt = Date.now() - (this._touchStartTime || 0);
@@ -429,6 +449,11 @@ export class Renderer {
         this._didPan = false;
       }
     }, { passive: false });
+  }
+
+  _touchDist(touches) {
+    const a = touches[0], b = touches[1];
+    return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
   }
 
   _zoomAt(mx, my, factor) {
