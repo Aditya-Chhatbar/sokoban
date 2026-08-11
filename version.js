@@ -1,4 +1,4 @@
-window.APP_VERSION = '8';
+window.APP_VERSION = '9';
 
 (function() {
   var v = '?v=' + window.APP_VERSION;

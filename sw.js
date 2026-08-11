@@ -1,4 +1,12 @@
-const CACHE_NAME = 'sokoban-v9';
+function getCacheName() {
+  const v = new URL(self.registration.scriptURL).searchParams.get('v') || '0';
+  return 'sokoban-v' + v;
+}
+
+function cache() {
+  return caches.open(getCacheName());
+}
+
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -22,14 +30,14 @@ function stripQuery(url) {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).then(() => self.skipWaiting())
+    cache().then((c) => c.addAll(CORE_ASSETS)).then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== getCacheName()).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -41,17 +49,33 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  const cacheKey = request.mode === 'navigate'
-    ? './index.html'
-    : stripQuery(request.url);
+  const cacheKey = stripQuery(request.url);
 
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request, { cache: 'no-store' }).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          cache().then((c) => c.put('./index.html', copy));
+        }
+        return response;
+      }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // Cache-first with background refresh: serve instantly, always re-fetch in the
+  // background so the cached copy is never stale for long.
   event.respondWith(
-    fetch(request, { cache: 'no-store' }).then((response) => {
-      if (response.ok) {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(cacheKey, copy));
-      }
-      return response;
-    }).catch(() => caches.match(cacheKey))
+    caches.match(cacheKey).then((cached) => {
+      const network = fetch(request, { cache: 'no-store' }).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          cache().then((c) => c.put(cacheKey, copy));
+        }
+        return response;
+      });
+      return cached || network;
+    })
   );
 });

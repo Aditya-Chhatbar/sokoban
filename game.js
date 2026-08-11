@@ -170,38 +170,42 @@ function showStatus(msg) {
 // ---------------------------------------------------------------------------
 
 function updateKeyGuide() {
-  const shape = elements.cellShape.value;
   const isMobile = window.innerWidth <= 700;
 
   const goalSection = `<div class="guide-section"><b>Goal</b></div>
-<div class="row" style="color:#ccc">Push all brown blocks onto the golden destinations.</div>`;
+<div class="row" style="color:#ccc">Push every brown box onto a golden destination (dot). A box on a destination lights up gold.</div>
+<div class="row" style="color:#ccc">You win once every box is on a destination.</div>`;
+
+  const moveSection = `<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
+${isMobile
+  ? `<div class="row" style="color:#ccc">Tap any empty cell to walk there. The player walks automatically along a path.</div>
+<div class="row" style="color:#ccc">Tap a cell next to a box to push it one space in that direction.</div>`
+  : `<div class="row"><span class="key">↑</span> <span class="key">↓</span> <span class="key">←</span> <span class="key">→</span> arrow keys (square grid only)</div>
+<div class="row" style="margin-top:6px;color:#ccc">Click anywhere to walk there, or click the cell beyond a box to push it.</div>`}`;
+
+  const rulesSection = `<div class="guide-section" style="margin-top:12px"><b>Rules</b></div>
+<div class="row" style="color:#ccc">You can only <b>push</b> boxes — never pull them.</div>
+<div class="row" style="color:#ccc">A box can't move into a wall, another box, or off the board.</div>
+<div class="row" style="color:#ccc">Once a box is stuck in a corner or against the edge away from a destination, it can usually not be freed — plan ahead.</div>`;
 
   const buttonsSection = `<div class="guide-section" style="margin-top:12px"><b>Buttons</b></div>
-<div class="row" style="color:#ccc"><b>Hint</b> — Shows the solution step by step</div>
-<div class="row" style="color:#ccc"><b>Undo</b> — Take back your last move</div>
-<div class="row" style="color:#ccc"><b>Restart</b> — Reset the puzzle to the beginning</div>`;
+<div class="row" style="color:#ccc"><b>Restart</b> — reset the puzzle to its start</div>
+<div class="row" style="color:#ccc"><b>Undo / Redo</b> — step back or forward through pushes</div>
+<div class="row" style="color:#ccc"><b>Hint</b> — watch the solution one push at a time</div>
+<div class="row" style="color:#ccc"><b>Goal</b> — show the minimum push count for this puzzle</div>
+<div class="row" style="color:#ccc"><b>New Level</b> — generate a new puzzle</div>
+<div class="row" style="color:#ccc"><b>Copy / Paste</b> — export or import a level as text</div>`;
 
   const zoomSection = `<div class="guide-section" style="margin-top:12px"><b>Zoom &amp; Pan</b></div>
-<div class="row" style="color:#ccc"><b>+ / -</b> buttons or scroll wheel to zoom</div>
-<div class="row" style="color:#ccc">Drag the board to pan</div>
-<div class="row" style="color:#ccc"><b>[ ]</b> to fit the puzzle to the screen</div>`;
+<div class="row" style="color:#ccc">${isMobile
+  ? `Pinch the board to zoom (it zooms from the center). Drag one finger to pan.`
+  : `<b>+</b> / <b>-</b> buttons or the scroll wheel zoom from the center. Drag the board to pan. <b>[ ]</b> fits the puzzle to the screen.`}</div>`;
 
-  let moveSection;
-  if (isMobile) {
-    moveSection = `<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
-<div class="row" style="color:#ccc">Tap any empty cell to walk there. The player moves automatically along a path.</div>
-<div class="row" style="color:#ccc">Tap a cell next to a block to push it one space in that direction.</div>`;
-  } else if (shape === 'hexagon') {
-    moveSection = `<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
-<div class="row" style="color:#ccc">Click any empty cell to walk there. The player moves automatically along a path.</div>
-<div class="row" style="color:#ccc">Click a cell next to a block to push it one space in that direction.</div>`;
-  } else {
-    moveSection = `<div class="guide-section" style="margin-top:12px"><b>Moving</b></div>
-<div class="row"><span class="key">↑</span> <span class="key">↓</span> <span class="key">←</span> <span class="key">→</span> arrow keys</div>
-<div class="row" style="margin-top:6px;color:#ccc">Click any empty cell to walk there. Click next to a block to push it.</div>`;
-  }
+  const settingsSection = `<div class="guide-section" style="margin-top:12px"><b>Settings</b></div>
+<div class="row" style="color:#ccc"><b>Ensure solvability</b> — verify every generated puzzle has a solution</div>
+<div class="row" style="color:#ccc"><b>Ask before new level</b> — prompt before discarding the current puzzle</div>`;
 
-  elements.guideContent.innerHTML = goalSection + moveSection + buttonsSection + zoomSection;
+  elements.guideContent.innerHTML = goalSection + moveSection + rulesSection + buttonsSection + zoomSection + settingsSection;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,22 +216,25 @@ async function generateAndVerify(config) {
   clearError();
   saveConfig();
 
-  if (!config.ensureSolvable) {
-    for (let i = 0; i < config.maxAttempts; i++) {
-      const result = generateLevel(config);
-      if (result) { clearLevel(); applyLevel(result); return; }
-    }
-    elements.errorMsg.textContent = 'Failed to generate puzzle. Try different settings.';
-    elements.errorMsg.classList.remove('hidden');
-
-    return;
-  }
-
   elements.solverOverlay.classList.remove('hidden');
   elements.cancelBtn.disabled = false;
 
-  for (let i = 0; i < config.maxAttempts; i++) {
-    elements.solverAttempt.textContent = `Attempt ${i + 1}/${config.maxAttempts}`;
+  for (let attempt = 1; ; attempt++) {
+    if (!config.ensureSolvable) {
+      elements.solverAttempt.textContent = `Attempt ${attempt}`;
+      elements.solverStatus.textContent = 'Generating puzzle...';
+      await new Promise(r => setTimeout(r, 0));
+      const result = generateLevel(config);
+      if (result) {
+        elements.solverOverlay.classList.add('hidden');
+        clearLevel();
+        applyLevel(result);
+        return;
+      }
+      continue;
+    }
+
+    elements.solverAttempt.textContent = `Attempt ${attempt}`;
     elements.solverStatus.textContent = 'Generating puzzle...';
 
     const result = generateLevel(config);
@@ -249,15 +256,10 @@ async function generateAndVerify(config) {
       solutionPath = solveResult.path;
       lastSolveCost = solveResult.cost;
       lastSolveVisited = solveResult.visited;
-      showStatus(`Found solvable puzzle on attempt ${i + 1}/${config.maxAttempts} (pushes: ${solveResult.cost}, states: ${solveResult.visited})`);
+      showStatus(`Found solvable puzzle on attempt ${attempt} (pushes: ${solveResult.cost}, states: ${solveResult.visited})`);
       return;
     }
   }
-
-  elements.solverOverlay.classList.add('hidden');
-  elements.errorMsg.textContent = `Could not generate a solvable puzzle in ${config.maxAttempts} attempts.`;
-  elements.errorMsg.classList.remove('hidden');
-
 }
 
 // ---------------------------------------------------------------------------
@@ -712,6 +714,6 @@ async function autoLoad() {
     await importLevel(stored);
     return;
   }
-  const config = readConfig() || { shape: 'square', type: 'rectangular', numBlocks: 3, maxAttempts: 100, dimensions: { width: 8, height: 8, area: 64 }, ensureSolvable: true };
+  const config = readConfig() || { shape: 'square', type: 'rectangular', numBlocks: 3, dimensions: { width: 8, height: 8, area: 64 }, ensureSolvable: true };
   await generateAndVerify(config);
 }

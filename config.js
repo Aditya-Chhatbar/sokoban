@@ -6,7 +6,6 @@ export const elements = {
   area: document.getElementById('area'),
   radius: document.getElementById('radius'),
   blocks: document.getElementById('blocks'),
-  maxAttempts: document.getElementById('maxAttempts'),
   ensureSolvable: document.getElementById('ensureSolvable'),
   askBeforeNewLevel: document.getElementById('askBeforeNewLevel'),
 
@@ -75,7 +74,6 @@ export function saveConfig() {
     area: elements.area.value,
     radius: elements.radius.value,
     blocks: elements.blocks.value,
-    maxAttempts: elements.maxAttempts.value,
     ensureSolvable: elements.ensureSolvable.checked,
     askBeforeNewLevel: elements.askBeforeNewLevel.checked,
   };
@@ -98,7 +96,6 @@ export function loadConfig() {
     if (data.area) elements.area.value = data.area;
     if (data.radius) elements.radius.value = data.radius;
     if (data.blocks) elements.blocks.value = data.blocks;
-    if (data.maxAttempts) elements.maxAttempts.value = data.maxAttempts;
     if (data.ensureSolvable !== undefined) elements.ensureSolvable.checked = data.ensureSolvable;
     if (data.askBeforeNewLevel !== undefined) elements.askBeforeNewLevel.checked = data.askBeforeNewLevel;
     return true;
@@ -154,7 +151,6 @@ export function readConfig() {
   const shape = elements.cellShape.value;
   const type = elements.gridType.value;
   const numBlocks = parseInt(elements.blocks.value, 10);
-  const maxAttempts = parseInt(elements.maxAttempts.value, 10);
 
   let dimensions = {};
 
@@ -195,16 +191,16 @@ export function readConfig() {
   }
 
   if (numBlocks < 1) {
-    showError('Number of blocks must be at least 1.');
+    showError('Number of boxes must be at least 1.');
     return null;
   }
 
   if (dimensions.area < numBlocks + 1) {
-    showError(`Area (${dimensions.area}) must be at least blocks+1 (${numBlocks + 1}) to fit the player.`);
+    showError(`Area (${dimensions.area}) must be at least boxes+1 (${numBlocks + 1}) to fit the player.`);
     return null;
   }
 
-  return { shape, type, numBlocks, maxAttempts, dimensions, ensureSolvable: elements.ensureSolvable.checked, askBeforeNewLevel: elements.askBeforeNewLevel.checked };
+  return { shape, type, numBlocks, dimensions, ensureSolvable: elements.ensureSolvable.checked, askBeforeNewLevel: elements.askBeforeNewLevel.checked };
 }
 
 elements.cellShape.addEventListener('change', () => {
@@ -217,7 +213,7 @@ elements.gridType.addEventListener('change', () => {
   saveConfig();
 });
 
-['width', 'height', 'area', 'radius', 'blocks', 'maxAttempts'].forEach(id => {
+['width', 'height', 'area', 'radius', 'blocks'].forEach(id => {
   elements[id].addEventListener('change', saveConfig);
 });
 
