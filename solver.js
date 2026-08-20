@@ -22,6 +22,11 @@ function addPos(a, b) {
   return { q: a.q + b.q, r: a.r + b.r };
 }
 
+function negPos(p) {
+  if (p.x !== undefined) return { x: -p.x, y: -p.y };
+  return { q: -p.q, r: -p.r };
+}
+
 function inShape(pos, shapeCells, shape) { return shapeCells.has(posKey(pos, shape)); }
 
 // ---------------------------------------------------------------------------
@@ -109,24 +114,110 @@ function stateHeuristic(blocks, heuristicDist) {
 // Deadlock / win detection (used by Solver.run)
 // ---------------------------------------------------------------------------
 
-function hasDeadlock(blocks, shapeCells, dests, shape) {
+// A non-goal cell is "dead" if a box there can never reach a goal: every
+// possible push out of it lands on a cell where the box is permanently stuck.
+// Frozen cells (a box there has zero possible pushes) are the base; we then
+// propagate to cells whose every achievable exit is frozen or dead, until a
+// fixpoint. Exits that land on a goal keep a cell live. Computed once per
+// solve, then used as a cheap Set lookup in hasDeadlock.
+function computeDeadCells(shapeCells, dests, shape) {
+  const dirs = getDirs(shape);
+  const dead = new Set();
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const ck of shapeCells) {
+      if (dests.has(ck) || dead.has(ck)) continue;
+      const parts = ck.split(',').map(Number);
+      const pos = shape === 'hexagon' ? { q: parts[0], r: parts[1] } : { x: parts[0], y: parts[1] };
+      let liveExit = false;
+
+      for (const d of dirs) {
+        const land = addPos(pos, d);
+        const stand = addPos(pos, negPos(d));
+        if (inShape(land, shapeCells, shape) && inShape(stand, shapeCells, shape)) {
+          const landK = posKey(land, shape);
+          if (dests.has(landK) || !dead.has(landK)) { liveExit = true; break; }
+        }
+      }
+
+      if (!liveExit) { dead.add(ck); changed = true; }
+    }
+  }
+
+  return dead;
+}
+
+// Static upper bound on the cells a box can ever occupy: starting from the
+// initial box positions, push a box across the floor while letting the player
+// walk through boxes and boxes push through boxes. Any cell outside the
+// resulting set can never hold a box in any reachable state.
+function computeBoxReachable(initialBlocks, shapeCells, shape) {
+  const dirs = getDirs(shape);
+  const reach = new Set();
+  const queue = [];
+
+  for (const k of initialBlocks) { reach.add(k); queue.push(k); }
+
+  while (queue.length > 0) {
+    const ck = queue.shift();
+    const parts = ck.split(',').map(Number);
+    const pos = shape === 'hexagon' ? { q: parts[0], r: parts[1] } : { x: parts[0], y: parts[1] };
+
+    for (const d of dirs) {
+      const land = addPos(pos, d);
+      const stand = addPos(pos, negPos(d));
+      if (!inShape(land, shapeCells, shape) || !inShape(stand, shapeCells, shape)) continue;
+      const landK = posKey(land, shape);
+      if (!reach.has(landK)) { reach.add(landK); queue.push(landK); }
+    }
+  }
+
+  return reach;
+}
+
+// Situational freeze deadlock: repeatedly drop boxes that have at least one
+// free push destination (wall-free and not blocked by another remaining box).
+// Whatever is left is a rigid, permanently-locked cluster: if any box in it is
+// off a goal, the state can never be solved.
+function freezeDeadlock(blocks, shapeCells, shape) {
+  const dirs = getDirs(shape);
+  const remaining = new Set(blocks);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const bk of Array.from(remaining)) {
+      const parts = bk.split(',').map(Number);
+      const pos = shape === 'hexagon' ? { q: parts[0], r: parts[1] } : { x: parts[0], y: parts[1] };
+      let movable = false;
+
+      for (const d of dirs) {
+        const dest = addPos(pos, d);
+        const destK = posKey(dest, shape);
+        if (inShape(dest, shapeCells, shape) && !remaining.has(destK)) { movable = true; break; }
+      }
+
+      if (movable) { remaining.delete(bk); changed = true; }
+    }
+  }
+
+  return remaining;
+}
+
+function hasDeadlock(blocks, shapeCells, dests, shape, deadCells, boxReachable) {
   for (const bk of blocks) {
     if (dests.has(bk)) continue;
-    const parts = bk.split(',').map(Number);
-    let canPush = false;
-
-    const checks = shape === 'square'
-      ? [[-1, 0], [1, 0], [0, -1], [0, 1]]
-      : [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, -1]];
-
-    for (const [da, db] of checks) {
-      const keyA = `${parts[0]-da},${parts[1]-db}`;
-      const keyB = `${parts[0]+da},${parts[1]+db}`;
-      if (shapeCells.has(keyA) && shapeCells.has(keyB)) { canPush = true; break; }
-    }
-
-    if (!canPush) return true;
+    if (deadCells.has(bk)) return true;
+    if (!boxReachable.has(bk)) return true;
   }
+
+  const frozen = freezeDeadlock(blocks, shapeCells, shape);
+  for (const bk of frozen) {
+    if (!dests.has(bk)) return true;
+  }
+
   return false;
 }
 
@@ -186,6 +277,8 @@ export class Solver {
     const destSet = new Set(this.level.destinations.map(d => posKey(d, shape)));
 
     const heuristicDist = precomputeHeuristicDist(shapeCells, destSet, shape);
+    const deadCells = computeDeadCells(shapeCells, destSet, shape);
+    const boxReachable = computeBoxReachable(initialBlocks, shapeCells, shape);
     const startKey = stateKey(initialBlocks, initialPlayer);
     const dist = new Map();
     dist.set(startKey, 0);
@@ -241,7 +334,7 @@ export class Solver {
           const newCost = state.cost + 1;
 
           if (dist.has(newStateKey) && dist.get(newStateKey) <= newCost) continue;
-          if (hasDeadlock(newBlocks, shapeCells, destSet, shape)) continue;
+          if (hasDeadlock(newBlocks, shapeCells, destSet, shape, deadCells, boxReachable)) continue;
 
           dist.set(newStateKey, newCost);
           parent.set(newStateKey, state.key);
