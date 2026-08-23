@@ -59,15 +59,16 @@ self.addEventListener('fetch', (event) => {
           cache().then((c) => c.put('./index.html', copy));
         }
         return response;
-      }).catch(() => caches.match('./index.html'))
+      }).catch(() => cache().then((c) => c.match('./index.html')))
     );
     return;
   }
 
   // Cache-first with background refresh: serve instantly, always re-fetch in the
-  // background so the cached copy is never stale for long.
+  // background so the cached copy is never stale for long. Only match inside the
+  // current version's cache so a stale old-version entry is never served.
   event.respondWith(
-    caches.match(cacheKey).then((cached) => {
+    cache().then((c) => c.match(cacheKey)).then((cached) => {
       const network = fetch(request, { cache: 'no-store' }).then((response) => {
         if (response.ok) {
           const copy = response.clone();
