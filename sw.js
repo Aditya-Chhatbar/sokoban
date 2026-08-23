@@ -53,30 +53,41 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request, { cache: 'no-store' }).then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          cache().then((c) => c.put('./index.html', copy));
-        }
-        return response;
-      }).catch(() => cache().then((c) => c.match('./index.html')))
+      fetch(request, { cache: 'no-store' })
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            cache().then((c) => c.put('./index.html', copy));
+          }
+          return response;
+        })
+        .catch(() =>
+          cache()
+            .then((c) => c.match('./index.html'))
+            .then((cached) => cached || fetch(request))
+            .catch(() => fetch(request))
+        )
     );
     return;
   }
 
   // Cache-first with background refresh: serve instantly, always re-fetch in the
   // background so the cached copy is never stale for long. Only match inside the
-  // current version's cache so a stale old-version entry is never served.
+  // current version's cache so a stale old-version entry is never served. Any
+  // cache failure falls back to the network so the app can never go dark.
   event.respondWith(
-    cache().then((c) => c.match(cacheKey)).then((cached) => {
-      const network = fetch(request, { cache: 'no-store' }).then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          cache().then((c) => c.put(cacheKey, copy));
+    (async () => {
+      try {
+        const c = await cache();
+        const cached = await c.match(cacheKey);
+        if (cached) {
+          fetch(request, { cache: 'no-store' })
+            .then((response) => { if (response.ok) c.put(cacheKey, response.clone()); })
+            .catch(() => {});
+          return cached;
         }
-        return response;
-      });
-      return cached || network;
-    })
+      } catch (e) { /* cache unavailable - go to network */ }
+      return fetch(request);
+    })()
   );
 });
