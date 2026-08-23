@@ -30,15 +30,23 @@ function stripQuery(url) {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    cache().then((c) => c.addAll(CORE_ASSETS)).then(() => self.skipWaiting())
+    // Never let a broken/rejected Cache API fail the install - a worker that
+    // fails to install can never replace an older, buggier one.
+    cache()
+      .then((c) => c.addAll(CORE_ASSETS))
+      .catch(() => {})
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== getCacheName()).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== getCacheName()).map((k) => caches.delete(k)))
+      )
+      .catch(() => {})
+      .then(() => self.clients.claim())
   );
 });
 
